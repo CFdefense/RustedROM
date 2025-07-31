@@ -1,51 +1,49 @@
+use crate::hdw::cpu::CPU;
+use chrono::Local;
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
+use sdl2::pixels::Color;
 /**
  * UI Module - SDL2-based Game Boy Emulator User Interface
- * 
+ *
  * This module implements the complete user interface system for the Game Boy emulator,
  * including the main game display, debug tile viewer, header overlay, and audio output.
  * It uses SDL2 for cross-platform graphics, audio, and input handling.
- * 
+ *
  * Display Components:
  * - Main game window: 800x600 pixels with scaled Game Boy display (160x144 -> 640x576)
  * - Debug tile viewer: 16x24 grid showing all 384 VRAM tiles (when debug enabled)
  * - Header overlay: Shows game name, current time, and exit button
  * - FPS counter: Real-time frame rate display
- * 
+ *
  * Audio System:
  * - SDL2 audio queue with 44.1kHz mono output
  * - Real-time audio sample buffering from APU
  * - Configurable buffer sizes for low-latency playback
- * 
+ *
  * Rendering Pipeline:
  * - Surface-based pixel manipulation for game display
  * - Texture streaming for GPU-accelerated rendering
  * - Custom bitmap font rendering for UI text
  * - Color palette support for authentic Game Boy visuals
- * 
+ *
  * The UI system provides both emulation display and development tools,
  * with the debug viewer showing raw VRAM tile data for development purposes.
  */
-
 // UI module for Game Boy emulator
 // Handles SDL2-based graphical user interface, including main game display and debug tile viewer
-
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::{TextureCreator, WindowCanvas};
-use sdl2::ttf::Sdl2TtfContext;
-use sdl2::video::{WindowContext};
-use sdl2::VideoSubsystem;
-use sdl2::EventPump;
-use sdl2::surface::Surface;
 use sdl2::rect::Rect;
-use sdl2::pixels::Color;
-use sdl2::audio::{AudioQueue, AudioSpecDesired};
+use sdl2::render::{TextureCreator, WindowCanvas};
+use sdl2::surface::Surface;
+use sdl2::ttf::Sdl2TtfContext;
+use sdl2::video::WindowContext;
+use sdl2::EventPump;
+use sdl2::VideoSubsystem;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::hdw::cpu::CPU;
-use chrono::Local;
 
 // Main emulator window dimensions - provides plenty of space for the scaled Game Boy display
 pub const SCREEN_WIDTH: u32 = 800;
-pub const SCREEN_HEIGHT: u32 = 700;  // Increased from 650 to 700 to ensure full visibility
+pub const SCREEN_HEIGHT: u32 = 700; // Increased from 650 to 700 to ensure full visibility
 
 // Game Boy screen resolution - the actual LCD dimensions
 pub const XRES: u32 = 160;
@@ -70,11 +68,11 @@ const TILE_COLORS: [u32; 4] = [0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000];
 
 /**
  * UI - Main User Interface Controller
- * 
+ *
  * Manages all aspects of the emulator's visual and audio presentation.
  * Coordinates between SDL2 subsystems and emulator components to provide
  * real-time display of Game Boy output with optional debug visualizations.
- * 
+ *
  * The UI handles window management, rendering pipelines, audio streaming,
  * and provides development tools for debugging graphics and timing.
  */
@@ -83,33 +81,33 @@ pub struct UI {
     pub _sdl_context: sdl2::Sdl,
     pub _video_subsystem: VideoSubsystem,
     pub _ttf_context: Sdl2TtfContext,
-    
+
     // Rendering contexts for main game window and debug tile viewer
     pub main_canvas: WindowCanvas,
     pub debug_canvas: Option<WindowCanvas>,
-    
+
     // Texture creators for efficient rendering
     pub main_texture_creator: TextureCreator<WindowContext>,
     pub debug_texture_creator: Option<TextureCreator<WindowContext>>,
-    
+
     // Event handling for user input
     pub event_pump: EventPump,
-    
+
     // Frame buffers - surfaces hold pixel data before rendering to screen
     pub screen_surface: Surface<'static>,
     pub debug_surface: Option<Surface<'static>>,
-    
+
     // Audio components
     pub audio_queue: Option<AudioQueue<f32>>,
-    
+
     // Debug flag
     pub debug: bool,
-    
+
     // Game info for header bar
     pub current_game_name: Option<String>,
     pub show_header: bool,
     pub exit_requested: bool,
-    
+
     // FPS tracking
     pub fps_counter: u32,
     pub fps_display: u32,
@@ -143,7 +141,7 @@ impl UI {
             Ok(queue) => {
                 queue.resume(); // Start audio playback
                 Some(queue)
-            },
+            }
             Err(e) => {
                 println!("Failed to initialize audio: {}", e);
                 None
@@ -169,21 +167,31 @@ impl UI {
                 .build()
                 .map_err(|e| e.to_string())?;
 
-            let canvas = debug_window.into_canvas().build().map_err(|e| e.to_string())?;
-            let texture_creator = canvas.texture_creator();
-            
-            // Create surface for debug tile display with extra space for padding
-            let surface = Surface::new(DEBUG_SURFACE_WIDTH, DEBUG_SURFACE_HEIGHT, PixelFormatEnum::ARGB8888)
+            let canvas = debug_window
+                .into_canvas()
+                .build()
                 .map_err(|e| e.to_string())?;
-                
+            let texture_creator = canvas.texture_creator();
+
+            // Create surface for debug tile display with extra space for padding
+            let surface = Surface::new(
+                DEBUG_SURFACE_WIDTH,
+                DEBUG_SURFACE_HEIGHT,
+                PixelFormatEnum::ARGB8888,
+            )
+            .map_err(|e| e.to_string())?;
+
             (Some(canvas), Some(texture_creator), Some(surface))
         } else {
             (None, None, None)
         };
 
         // Convert main window to canvas object for 2D rendering
-        let main_canvas = main_window.into_canvas().build().map_err(|e| e.to_string())?;
-        
+        let main_canvas = main_window
+            .into_canvas()
+            .build()
+            .map_err(|e| e.to_string())?;
+
         // Create texture creator for efficient GPU-accelerated rendering
         let main_texture_creator = main_canvas.texture_creator();
 
@@ -216,7 +224,14 @@ impl UI {
     /// Renders a single 8x8 tile from VRAM to the debug surface
     /// Each tile consists of 16 bytes (2 bytes per 8-pixel row)
     /// The two bytes form bit planes that combine to create 2-bit color values (0-3)
-    fn display_tile(&mut self, start_location: u16, tile_num: u16, x: i32, y: i32, cpu: &mut super::cpu::CPU) {
+    fn display_tile(
+        &mut self,
+        start_location: u16,
+        tile_num: u16,
+        x: i32,
+        y: i32,
+        cpu: &mut super::cpu::CPU,
+    ) {
         // Only render if debug surface exists
         let debug_surface = if let Some(ref mut surface) = self.debug_surface {
             surface
@@ -229,7 +244,7 @@ impl UI {
             // Calculate addresses for the two bit planes of this row
             let addr1 = start_location + (tile_num * 16) + tile_y as u16;
             let addr2 = start_location + (tile_num * 16) + tile_y as u16 + 1;
-            
+
             // Ensure we're reading from valid VRAM range to prevent crashes
             if addr1 >= 0x8000 && addr1 <= 0x9FFF && addr2 >= 0x8000 && addr2 <= 0x9FFF {
                 // Read the two bit planes for this row
@@ -239,27 +254,32 @@ impl UI {
                 // Process each pixel in the row (8 pixels, from bit 7 down to bit 0)
                 for bit in (0..=7).rev() {
                     // Extract bit from each plane and combine to form 2-bit color index
-                    let hi = ((b1 & (1 << bit)) != 0) as u8 * 2;  // High bit contributes 2 to value
-                    let lo = ((b2 & (1 << bit)) != 0) as u8;       // Low bit contributes 1 to value
-                    let color = hi | lo;  // Combine to get color index (0-3)
+                    let hi = ((b1 & (1 << bit)) != 0) as u8 * 2; // High bit contributes 2 to value
+                    let lo = ((b2 & (1 << bit)) != 0) as u8; // Low bit contributes 1 to value
+                    let color = hi | lo; // Combine to get color index (0-3)
 
                     // Calculate pixel position on screen with scaling
                     let rect = Rect::new(
-                        x + ((7 - bit) * SCALE as i32),        // X position (left to right)
-                        y + ((tile_y / 2) * SCALE as i32),     // Y position (top to bottom)
-                        SCALE,                                  // Width of scaled pixel
-                        SCALE                                   // Height of scaled pixel
+                        x + ((7 - bit) * SCALE as i32),    // X position (left to right)
+                        y + ((tile_y / 2) * SCALE as i32), // Y position (top to bottom)
+                        SCALE,                             // Width of scaled pixel
+                        SCALE,                             // Height of scaled pixel
                     );
 
                     // Fill the scaled pixel rectangle with the appropriate color
                     if (color as usize) < TILE_COLORS.len() {
                         let color_value = TILE_COLORS[color as usize];
-                        debug_surface.fill_rect(rect, Color::RGBA(
-                            ((color_value >> 16) & 0xFF) as u8,  // Red component
-                            ((color_value >> 8) & 0xFF) as u8,   // Green component
-                            (color_value & 0xFF) as u8,          // Blue component
-                            ((color_value >> 24) & 0xFF) as u8,  // Alpha component
-                        )).unwrap();
+                        debug_surface
+                            .fill_rect(
+                                rect,
+                                Color::RGBA(
+                                    ((color_value >> 16) & 0xFF) as u8, // Red component
+                                    ((color_value >> 8) & 0xFF) as u8,  // Green component
+                                    (color_value & 0xFF) as u8,         // Blue component
+                                    ((color_value >> 24) & 0xFF) as u8, // Alpha component
+                                ),
+                            )
+                            .unwrap();
                     }
                 }
             }
@@ -270,7 +290,11 @@ impl UI {
     /// Displays 384 tiles in a 16x24 grid layout
     pub fn update_dbg_window(&mut self, cpu: &mut super::cpu::CPU) {
         // Only update if debug is enabled and components exist
-        if !self.debug || self.debug_surface.is_none() || self.debug_texture_creator.is_none() || self.debug_canvas.is_none() {
+        if !self.debug
+            || self.debug_surface.is_none()
+            || self.debug_texture_creator.is_none()
+            || self.debug_canvas.is_none()
+        {
             return;
         }
 
@@ -280,7 +304,9 @@ impl UI {
 
         // Clear debug surface with dark gray background
         if let Some(ref mut debug_surface) = self.debug_surface {
-            debug_surface.fill_rect(None, Color::RGBA(0x11, 0x11, 0x11, 0xFF)).unwrap();
+            debug_surface
+                .fill_rect(None, Color::RGBA(0x11, 0x11, 0x11, 0xFF))
+                .unwrap();
         }
 
         // Start from VRAM tile data area
@@ -290,7 +316,13 @@ impl UI {
         for y in 0..24 {
             for x in 0..16 {
                 // Render individual tile at calculated position
-                self.display_tile(addr, tile_num, x_draw + (x * SCALE as i32), y_draw + (y * SCALE as i32), cpu);
+                self.display_tile(
+                    addr,
+                    tile_num,
+                    x_draw + (x * SCALE as i32),
+                    y_draw + (y * SCALE as i32),
+                    cpu,
+                );
                 // Move to next horizontal tile position
                 x_draw += (8 * SCALE) as i32;
                 // Move to next tile number
@@ -303,12 +335,19 @@ impl UI {
         }
 
         // Create texture from surface and render to debug window
-        if let (Some(ref debug_texture_creator), Some(ref mut debug_canvas), Some(ref debug_surface)) = 
-            (&self.debug_texture_creator, &mut self.debug_canvas, &self.debug_surface) {
+        if let (
+            Some(ref debug_texture_creator),
+            Some(ref mut debug_canvas),
+            Some(ref debug_surface),
+        ) = (
+            &self.debug_texture_creator,
+            &mut self.debug_canvas,
+            &self.debug_surface,
+        ) {
             let debug_texture = debug_texture_creator
                 .create_texture_from_surface(debug_surface)
                 .expect("Failed to create debug texture");
-            
+
             debug_canvas.clear();
             debug_canvas.copy(&debug_texture, None, None).unwrap();
             debug_canvas.present();
@@ -325,17 +364,19 @@ impl UI {
         self.update_fps();
 
         // Clear the screen with black background
-        self.screen_surface.fill_rect(None, Color::RGB(0, 0, 0)).unwrap();
+        self.screen_surface
+            .fill_rect(None, Color::RGB(0, 0, 0))
+            .unwrap();
 
         // Define padding constants - minimal padding for maximum game size
-        let header_height = 35u32;  // Keep header height the same
-        let bottom_padding = 60u32;  // Increased from 30 to 60 for more space at bottom
+        let header_height = 35u32; // Keep header height the same
+        let bottom_padding = 60u32; // Increased from 30 to 60 for more space at bottom
 
         // Calculate centering offsets to center the game in the window
         let game_width = XRES * SCALE;
         let game_height = YRES * SCALE;
         let offset_x = (SCREEN_WIDTH - game_width) / 2;
-        
+
         // Calculate vertical position with safe arithmetic
         let total_padding = header_height + bottom_padding;
         let remaining_height = SCREEN_HEIGHT - total_padding;
@@ -346,13 +387,10 @@ impl UI {
         };
 
         // Draw dark gray background for game area
-        let game_area_rect = Rect::new(
-            offset_x as i32,
-            offset_y as i32,
-            game_width,
-            game_height
-        );
-        self.screen_surface.fill_rect(game_area_rect, Color::RGB(20, 20, 20)).unwrap();
+        let game_area_rect = Rect::new(offset_x as i32, offset_y as i32, game_width, game_height);
+        self.screen_surface
+            .fill_rect(game_area_rect, Color::RGB(20, 20, 20))
+            .unwrap();
 
         // Render each pixel from the Game Boy's video buffer to the main display
         for line_num in 0..YRES {
@@ -360,22 +398,27 @@ impl UI {
                 let buffer_index = (x + (line_num * XRES)) as usize;
                 if buffer_index < cpu.bus.ppu.video_buffer.len() {
                     let pixel_color = cpu.bus.ppu.video_buffer[buffer_index];
-                    
-                // Calculate scaled pixel rectangle with centering offset
-                let rect = Rect::new(
+
+                    // Calculate scaled pixel rectangle with centering offset
+                    let rect = Rect::new(
                         (offset_x + x * SCALE) as i32,
                         (offset_y + line_num * SCALE) as i32,
                         SCALE,
-                        SCALE
-                );
+                        SCALE,
+                    );
 
                     // Draw scaled pixel with the color from video buffer
-                    self.screen_surface.fill_rect(rect, Color::RGBA(
-                        ((pixel_color >> 16) & 0xFF) as u8,
-                        ((pixel_color >> 8) & 0xFF) as u8,
-                        (pixel_color & 0xFF) as u8,
-                        0xFF  // Force full alpha for visibility
-                    )).unwrap();
+                    self.screen_surface
+                        .fill_rect(
+                            rect,
+                            Color::RGBA(
+                                ((pixel_color >> 16) & 0xFF) as u8,
+                                ((pixel_color >> 8) & 0xFF) as u8,
+                                (pixel_color & 0xFF) as u8,
+                                0xFF, // Force full alpha for visibility
+                            ),
+                        )
+                        .unwrap();
                 }
             }
         }
@@ -389,10 +432,11 @@ impl UI {
         self.render_footer_bar();
 
         // Create texture from surface and render to main window
-        let main_texture = self.main_texture_creator
+        let main_texture = self
+            .main_texture_creator
             .create_texture_from_surface(&self.screen_surface)
             .expect("Failed to create main texture");
-        
+
         self.main_canvas.clear();
         self.main_canvas.copy(&main_texture, None, None).unwrap();
         self.main_canvas.present();
@@ -417,50 +461,77 @@ impl UI {
 
     /// Renders the header bar overlay with game name, time, and exit button
     fn render_header_bar(&mut self) {
-        let header_height = 35;  // Match the header height constant
+        let header_height = 35; // Match the header height constant
         let header_rect = Rect::new(0, 0, SCREEN_WIDTH, header_height);
-        
+
         // Draw semi-transparent dark background
-        self.screen_surface.fill_rect(header_rect, Color::RGBA(0, 0, 0, 180)).unwrap();
-        
+        self.screen_surface
+            .fill_rect(header_rect, Color::RGBA(0, 0, 0, 180))
+            .unwrap();
+
         // Draw game name on the left with adjusted y position
         if let Some(ref game_name) = self.current_game_name {
             let game_name_clone = game_name.clone();
-            self.draw_header_text(&game_name_clone, 20, 12, Color::RGB(255, 255, 255));  // Adjusted y from 15 to 12
+            self.draw_header_text(&game_name_clone, 20, 12, Color::RGB(255, 255, 255));
+            // Adjusted y from 15 to 12
         }
-        
+
         // Draw current time in the center with adjusted y position
         let time_str = self.get_current_time_string();
         let time_width = time_str.len() as i32 * 6; // 6 pixels per character
         let center_x = (SCREEN_WIDTH as i32 / 2) - (time_width / 2);
-        self.draw_header_text(&time_str, center_x, 12, Color::RGB(200, 200, 200));  // Adjusted y from 15 to 12
-        
+        self.draw_header_text(&time_str, center_x, 12, Color::RGB(200, 200, 200)); // Adjusted y from 15 to 12
+
         // Draw exit button on the right with adjusted y position
         let exit_text = "EXIT";
         let exit_button_width = 45i32;
         let exit_button_height = 22i32;
         let exit_x = (SCREEN_WIDTH - 65) as i32;
-        
+
         // Draw exit button background with adjusted y position
-        let exit_button_rect = Rect::new(exit_x, 7, exit_button_width as u32, exit_button_height as u32);  // Adjusted y from 9 to 7
-        self.screen_surface.fill_rect(exit_button_rect, Color::RGBA(180, 60, 60, 200)).unwrap();
-        
+        let exit_button_rect = Rect::new(
+            exit_x,
+            7,
+            exit_button_width as u32,
+            exit_button_height as u32,
+        ); // Adjusted y from 9 to 7
+        self.screen_surface
+            .fill_rect(exit_button_rect, Color::RGBA(180, 60, 60, 200))
+            .unwrap();
+
         // Draw exit button border with adjusted y positions
         let border_rects = [
-            Rect::new(exit_x, 7, exit_button_width as u32, 2),                    // Top
-            Rect::new(exit_x, 7 + exit_button_height - 2, exit_button_width as u32, 2), // Bottom
-            Rect::new(exit_x, 7, 2, exit_button_height as u32),                   // Left
-            Rect::new(exit_x + exit_button_width - 2, 7, 2, exit_button_height as u32), // Right
+            Rect::new(exit_x, 7, exit_button_width as u32, 2), // Top
+            Rect::new(
+                exit_x,
+                7 + exit_button_height - 2,
+                exit_button_width as u32,
+                2,
+            ), // Bottom
+            Rect::new(exit_x, 7, 2, exit_button_height as u32), // Left
+            Rect::new(
+                exit_x + exit_button_width - 2,
+                7,
+                2,
+                exit_button_height as u32,
+            ), // Right
         ];
         for border_rect in &border_rects {
-            self.screen_surface.fill_rect(*border_rect, Color::RGB(220, 80, 80)).unwrap();
+            self.screen_surface
+                .fill_rect(*border_rect, Color::RGB(220, 80, 80))
+                .unwrap();
         }
-        
+
         // Center the EXIT text within the button with adjusted y position
         let exit_text_width = exit_text.len() as i32 * 6;
         let exit_text_x = exit_x + (exit_button_width - exit_text_width) / 2;
-        let exit_text_y = 7 + (exit_button_height - 7) / 2;  // Adjusted y calculation
-        self.draw_header_text(exit_text, exit_text_x, exit_text_y, Color::RGB(255, 255, 255));
+        let exit_text_y = 7 + (exit_button_height - 7) / 2; // Adjusted y calculation
+        self.draw_header_text(
+            exit_text,
+            exit_text_x,
+            exit_text_y,
+            Color::RGB(255, 255, 255),
+        );
     }
 
     /// Gets the current time as a formatted string
@@ -482,347 +553,119 @@ impl UI {
         // Simple 5x7 bitmap font patterns
         let pattern = match ch.to_ascii_uppercase() {
             'A' => [
-                0b01110,
-                0b10001,
-                0b10001,
-                0b11111,
-                0b10001,
-                0b10001,
-                0b10001,
+                0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,
             ],
             'B' => [
-                0b11110,
-                0b10001,
-                0b10001,
-                0b11110,
-                0b10001,
-                0b10001,
-                0b11110,
+                0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110,
             ],
             'C' => [
-                0b01111,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b01111,
+                0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111,
             ],
             'D' => [
-                0b11110,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b11110,
+                0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110,
             ],
             'E' => [
-                0b11111,
-                0b10000,
-                0b10000,
-                0b11110,
-                0b10000,
-                0b10000,
-                0b11111,
+                0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111,
             ],
             'F' => [
-                0b11111,
-                0b10000,
-                0b10000,
-                0b11110,
-                0b10000,
-                0b10000,
-                0b10000,
+                0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000,
             ],
             'G' => [
-                0b01111,
-                0b10000,
-                0b10000,
-                0b10111,
-                0b10001,
-                0b10001,
-                0b01111,
+                0b01111, 0b10000, 0b10000, 0b10111, 0b10001, 0b10001, 0b01111,
             ],
             'H' => [
-                0b10001,
-                0b10001,
-                0b10001,
-                0b11111,
-                0b10001,
-                0b10001,
-                0b10001,
+                0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,
             ],
             'I' => [
-                0b01110,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b01110,
+                0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
             ],
             'L' => [
-                0b10000,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b10000,
-                0b11111,
+                0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111,
             ],
             'M' => [
-                0b10001,
-                0b11011,
-                0b10101,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
+                0b10001, 0b11011, 0b10101, 0b10001, 0b10001, 0b10001, 0b10001,
             ],
             'N' => [
-                0b10001,
-                0b11001,
-                0b10101,
-                0b10011,
-                0b10001,
-                0b10001,
-                0b10001,
+                0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001,
             ],
             'O' => [
-                0b01110,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b01110,
+                0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
             ],
             'P' => [
-                0b11110,
-                0b10001,
-                0b10001,
-                0b11110,
-                0b10000,
-                0b10000,
-                0b10000,
+                0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000,
             ],
             'R' => [
-                0b11110,
-                0b10001,
-                0b10001,
-                0b11110,
-                0b10100,
-                0b10010,
-                0b10001,
+                0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001,
             ],
             'S' => [
-                0b01111,
-                0b10000,
-                0b10000,
-                0b01110,
-                0b00001,
-                0b00001,
-                0b11110,
+                0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110,
             ],
             'T' => [
-                0b11111,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
+                0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100,
             ],
             'U' => [
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b01110,
+                0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
             ],
             'V' => [
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b01010,
-                0b01010,
-                0b00100,
+                0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b01010, 0b00100,
             ],
             'W' => [
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10101,
-                0b11011,
-                0b10001,
+                0b10001, 0b10001, 0b10001, 0b10001, 0b10101, 0b11011, 0b10001,
             ],
             'X' => [
-                0b10001,
-                0b01010,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b01010,
-                0b10001,
+                0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b01010, 0b10001,
             ],
             'Y' => [
-                0b10001,
-                0b10001,
-                0b01010,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
+                0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100,
             ],
             'Z' => [
-                0b11111,
-                0b00010,
-                0b00100,
-                0b01000,
-                0b10000,
-                0b10000,
-                0b11111,
+                0b11111, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000, 0b11111,
             ],
             '0' => [
-                0b01110,
-                0b10001,
-                0b10011,
-                0b10101,
-                0b11001,
-                0b10001,
-                0b01110,
+                0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110,
             ],
             '1' => [
-                0b00100,
-                0b01100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b00100,
-                0b01110,
+                0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
             ],
             '2' => [
-                0b01110,
-                0b10001,
-                0b00001,
-                0b00110,
-                0b01000,
-                0b10000,
-                0b11111,
+                0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111,
             ],
             '3' => [
-                0b11110,
-                0b00001,
-                0b00001,
-                0b01110,
-                0b00001,
-                0b00001,
-                0b11110,
+                0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110,
             ],
             '4' => [
-                0b10010,
-                0b10010,
-                0b10010,
-                0b11111,
-                0b00010,
-                0b00010,
-                0b00010,
+                0b10010, 0b10010, 0b10010, 0b11111, 0b00010, 0b00010, 0b00010,
             ],
             '5' => [
-                0b11111,
-                0b10000,
-                0b10000,
-                0b11110,
-                0b00001,
-                0b00001,
-                0b11110,
+                0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110,
             ],
             '6' => [
-                0b01111,
-                0b10000,
-                0b10000,
-                0b11110,
-                0b10001,
-                0b10001,
-                0b01110,
+                0b01111, 0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110,
             ],
             '7' => [
-                0b11111,
-                0b00001,
-                0b00010,
-                0b00100,
-                0b01000,
-                0b01000,
-                0b01000,
+                0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000,
             ],
             '8' => [
-                0b01110,
-                0b10001,
-                0b10001,
-                0b01110,
-                0b10001,
-                0b10001,
-                0b01110,
+                0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110,
             ],
             '9' => [
-                0b01110,
-                0b10001,
-                0b10001,
-                0b01111,
-                0b00001,
-                0b00001,
-                0b11110,
+                0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b11110,
             ],
             ':' => [
-                0b00000,
-                0b01100,
-                0b01100,
-                0b00000,
-                0b01100,
-                0b01100,
-                0b00000,
+                0b00000, 0b01100, 0b01100, 0b00000, 0b01100, 0b01100, 0b00000,
             ],
             ' ' => [0; 7],
             '\'' => [
-                0b01100,
-                0b01100,
-                0b01000,
-                0b00000,
-                0b00000,
-                0b00000,
-                0b00000,
+                0b01100, 0b01100, 0b01000, 0b00000, 0b00000, 0b00000, 0b00000,
             ],
             '.' => [
-                0b00000,
-                0b00000,
-                0b00000,
-                0b00000,
-                0b00000,
-                0b01100,
-                0b01100,
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100,
             ],
             '=' => [
-                0b00000,
-                0b00000,
-                0b11111,
-                0b00000,
-                0b11111,
-                0b00000,
-                0b00000,
+                0b00000, 0b00000, 0b11111, 0b00000, 0b11111, 0b00000, 0b00000,
             ],
             _ => [
-                0b01110,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b10001,
-                0b01110,
+                0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
             ],
         };
 
@@ -839,36 +682,45 @@ impl UI {
 
     /// Renders the footer bar containing FPS counter and controls
     fn render_footer_bar(&mut self) {
-        let footer_height = 55u32;  // Increased from 50 to 55
+        let footer_height = 55u32; // Increased from 50 to 55
         let footer_y = SCREEN_HEIGHT - footer_height;
         let footer_rect = Rect::new(0, footer_y as i32, SCREEN_WIDTH, footer_height);
-        
+
         // Draw semi-transparent dark background for footer
-        self.screen_surface.fill_rect(footer_rect, Color::RGBA(0, 0, 0, 180)).unwrap();
-        
+        self.screen_surface
+            .fill_rect(footer_rect, Color::RGBA(0, 0, 0, 180))
+            .unwrap();
+
         // Draw controls text centered in footer
         let controls_text = "Z=B  X=A  ARROWS=DPAD  ENTER=START  TAB=SELECT  ESC=EXIT";
         let text_width = controls_text.len() as i32 * 6; // 6 pixels per character
         let controls_x = (SCREEN_WIDTH as i32 - text_width) / 2;
-        let controls_y = footer_y as i32 + 25;  // Adjusted for new footer height
-        
+        let controls_y = footer_y as i32 + 25; // Adjusted for new footer height
+
         // Draw controls background
         let bg_padding = 5;
         let bg_rect = Rect::new(
             controls_x - bg_padding,
             controls_y - bg_padding,
             (text_width + 2 * bg_padding) as u32,
-            20 // Fixed height for controls background
+            20, // Fixed height for controls background
         );
-        self.screen_surface.fill_rect(bg_rect, Color::RGBA(0, 0, 0, 160)).unwrap();
-        
+        self.screen_surface
+            .fill_rect(bg_rect, Color::RGBA(0, 0, 0, 160))
+            .unwrap();
+
         // Draw controls text
-        self.draw_header_text(controls_text, controls_x, controls_y, Color::RGB(255, 255, 255));
+        self.draw_header_text(
+            controls_text,
+            controls_x,
+            controls_y,
+            Color::RGB(255, 255, 255),
+        );
 
         // Draw FPS in bottom left corner at same level as controls
         let fps_text = format!("FPS: {}", self.fps_display);
-        let fps_x = 20;  // Consistent with header padding
-        let fps_y = controls_y;  // Same y level as controls
+        let fps_x = 20; // Consistent with header padding
+        let fps_y = controls_y; // Same y level as controls
         self.draw_header_text(&fps_text, fps_x, fps_y, Color::RGB(255, 255, 255));
     }
 
@@ -878,19 +730,19 @@ impl UI {
             // Get available queue size
             let queue_size = audio_queue.size();
             let target_queue_size = 4096; // Keep a reasonable buffer
-            
+
             // Add samples if queue is getting low
             if queue_size < target_queue_size {
                 let samples_needed = (target_queue_size - queue_size).min(1024);
                 let mut audio_buffer = vec![0.0f32; samples_needed as usize];
-                
+
                 // Get samples from the audio system
                 let available_samples = cpu.bus.apu.sample_buffer.len();
                 if available_samples > 0 {
                     // Get actual samples from the audio buffer
                     let copy_len = available_samples.min(samples_needed as usize);
                     cpu.bus.apu.get_samples(&mut audio_buffer[..copy_len]);
-                    
+
                     // Fill remaining with silence if needed
                     for i in copy_len..audio_buffer.len() {
                         audio_buffer[i] = 0.0;
@@ -901,7 +753,7 @@ impl UI {
                         *sample = 0.0;
                     }
                 }
-                
+
                 // Queue the audio samples using the non-deprecated method
                 let _ = audio_queue.queue_audio(&audio_buffer);
             }
