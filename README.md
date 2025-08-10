@@ -109,7 +109,7 @@ brew install sdl2 sdl2_ttf
 - Download SDL2 development libraries from [libsdl.org](https://www.libsdl.org/download-2.0.php)
 - Extract and follow SDL2 Rust setup instructions
 
-3. Build the project
+3. Build the project (**Please build and run in release to avoid mutex poisoning**)
 ```bash
 cargo build --release
 ```
