@@ -211,7 +211,13 @@ GameBoy/
 - Memory dump capabilities
 - Performance profiling
 - Instruction count limiting
-  
+
+## References
+
+- [Initial Inspiration](https://www.youtube.com/watch?v=ElwhYW5wjts)
+- [Pandocs](https://gbdev.io/pandocs/)
+- [Instruction Set](https://meganesu.github.io/generate-gb-opcodes/)
+
 ## License
 
 MIT License
