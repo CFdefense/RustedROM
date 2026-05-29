@@ -37,7 +37,7 @@
   Matrix Scanning System:
     Button Matrix (when button_select = false):
       - Bit 3: Start button state
-      - Bit 2: Select button state  
+      - Bit 2: Select button state
       - Bit 1: B button state
       - Bit 0: A button state
 
@@ -113,10 +113,14 @@ impl GamePad {
         }
     }
 
-    pub fn gamepad_button_selection(&self) -> bool { self.button_select }
-    pub fn gamepad_direction_selection(&self) -> bool { self.direction_select }
-    
-    pub fn gamepad_set_selection(&mut self, value: u8) { 
+    pub fn gamepad_button_selection(&self) -> bool {
+        self.button_select
+    }
+    pub fn gamepad_direction_selection(&self) -> bool {
+        self.direction_select
+    }
+
+    pub fn gamepad_set_selection(&mut self, value: u8) {
         self.button_select = (value & 0x20) != 0;
         self.direction_select = (value & 0x10) != 0;
     }

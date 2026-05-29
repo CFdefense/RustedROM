@@ -56,7 +56,7 @@
 
   MBC Detection Functions:
     cart_mbc1: MBC1 Check - Detects MBC1 cartridge types (0x01-0x03)
-    cart_mbc2: MBC2 Check - Detects MBC2 cartridge types (0x05-0x06)  
+    cart_mbc2: MBC2 Check - Detects MBC2 cartridge types (0x05-0x06)
     cart_mbc3: MBC3 Check - Detects MBC3 cartridge types (0x0F-0x13)
     cart_mbc5: MBC5 Check - Detects MBC5 cartridge types (0x19-0x1E)
     cart_battery: Battery Check - Detects battery backup support
@@ -160,24 +160,24 @@ pub struct Cartridge {
     ram_enabled: bool,
     ram_banking: bool,
     rom_bank_x: usize, // Index into ROM data for current bank
-    banking_mode: u8, 
+    banking_mode: u8,
     rom_bank_value: u8,
     ram_bank_value: u8,
-    ram_bank: usize, // Index into ram_banks
+    ram_bank: usize,                  // Index into ram_banks
     ram_banks: [Option<Vec<u8>>; 16], // Each bank is 8KB when allocated
     battery: bool,
     need_save: bool,
-    
+
     // MBC5 specific
     mbc5_rom_bank_upper: u8, // Upper bit for MBC5's 9-bit ROM bank register
-    
+
     // MBC3 RTC (Real Time Clock) support
-    rtc_registers: [u8; 5], // RTC S, M, H, DL, DH (0x08-0x0C)
-    rtc_latched: [u8; 5],   // Latched RTC values
-    rtc_latch_state: u8,    // For latch sequence (0x00 -> 0x01)
-    rtc_selected: bool,     // True if RTC register selected instead of RAM
+    rtc_registers: [u8; 5],  // RTC S, M, H, DL, DH (0x08-0x0C)
+    rtc_latched: [u8; 5],    // Latched RTC values
+    rtc_latch_state: u8,     // For latch sequence (0x00 -> 0x01)
+    rtc_selected: bool,      // True if RTC register selected instead of RAM
     rtc_register_select: u8, // Which RTC register (0x08-0x0C)
-    
+
     // RTC timing (simplified - real implementation would use system time)
     rtc_last_time: std::time::SystemTime,
 }
@@ -214,10 +214,11 @@ impl Cartridge {
         for i in 0..16 {
             self.ram_banks[i] = None;
 
-            if (self.rom_header.ram_size == 2 && i == 0) || 
-               (self.rom_header.ram_size == 3 && i < 4) || 
-               (self.rom_header.ram_size == 4 && i < 16) || 
-               (self.rom_header.ram_size == 5 && i < 8) {
+            if (self.rom_header.ram_size == 2 && i == 0)
+                || (self.rom_header.ram_size == 3 && i < 4)
+                || (self.rom_header.ram_size == 4 && i < 16)
+                || (self.rom_header.ram_size == 5 && i < 8)
+            {
                 // Allocate 8KB (0x2000 bytes) for each RAM bank
                 self.ram_banks[i] = Some(vec![0; 0x2000]);
             }
@@ -232,37 +233,37 @@ impl Cartridge {
 
         self.ram_bank = 0; // Point to first bank
         self.rom_bank_x = 0x4000; // ROM bank 1 starts at 0x4000
-        
+
         // For MBC1, initialize with proper defaults
         if self.cart_mbc1() {
             self.ram_enabled = false; // RAM starts disabled
-            self.ram_banking = true;  // Enable RAM banking by default
+            self.ram_banking = true; // Enable RAM banking by default
         }
 
-        // For MBC2, initialize with proper defaults  
+        // For MBC2, initialize with proper defaults
         if self.cart_mbc2() {
             self.ram_enabled = false; // RAM starts disabled
-            self.ram_banking = true;  // RAM is always enabled when enabled
+            self.ram_banking = true; // RAM is always enabled when enabled
         }
-        
+
         // For MBC3, initialize with proper defaults
         if self.cart_mbc3() {
             self.ram_enabled = false; // RAM starts disabled
-            self.ram_banking = true;  // Enable RAM banking by default
+            self.ram_banking = true; // Enable RAM banking by default
             self.rtc_selected = false; // Start with RAM selected
             self.rtc_register_select = 0x08; // Default to seconds register
-            
+
             // Initialize RTC if supported
             if self.cart_has_rtc() {
                 self.update_rtc_time();
             }
         }
-        
+
         // For MBC5, initialize with proper defaults
         if self.cart_mbc5() {
             self.ram_enabled = false; // RAM starts disabled
-            self.ram_banking = true;  // Enable RAM banking by default
-            self.rom_bank_value = 1;  // Start with ROM bank 1
+            self.ram_banking = true; // Enable RAM banking by default
+            self.rom_bank_value = 1; // Start with ROM bank 1
             self.rom_bank_x = 0x4000; // ROM bank 1 starts at 0x4000
         }
     }
@@ -277,12 +278,12 @@ impl Cartridge {
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new(&self.file_name))
             .to_string_lossy();
-        
+
         let save_file_path = format!("saves/{}.battery", filename);
-        
+
         if let Ok(save_data) = std::fs::read(&save_file_path) {
             println!("Loading battery save: {}", save_file_path);
-            
+
             if let Some(ref mut ram_bank) = self.ram_banks[self.ram_bank] {
                 if save_data.len() >= 0x2000 {
                     ram_bank[..0x2000].copy_from_slice(&save_data[..0x2000]);
@@ -313,13 +314,13 @@ impl Cartridge {
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new(&self.file_name))
             .to_string_lossy();
-        
+
         let save_file_path = format!("saves/{}.battery", filename);
-        
+
         if let Some(ref ram_bank) = self.ram_banks[self.ram_bank] {
             // Save only 8KB (0x2000 bytes) from current RAM bank
             let save_data = &ram_bank[..0x2000];
-            
+
             if let Err(e) = std::fs::write(&save_file_path, save_data) {
                 println!("COULD NOT FIND SAVE FILE: {}", save_file_path);
                 println!("Error: {}", e);
@@ -381,7 +382,10 @@ impl Cartridge {
         // Now that header is loaded, check for battery support
         self.battery = self.cart_battery();
         self.need_save = false;
-        println!("Cart Type: {:#04x}, Battery: {}", self.rom_header.cart_type, self.battery);
+        println!(
+            "Cart Type: {:#04x}, Battery: {}",
+            self.rom_header.cart_type, self.battery
+        );
 
         // Calculate the actual ROM size per pandocs
         self.rom_size = 32 * 1024 * (1 << self.rom_header.rom_size);
@@ -468,7 +472,7 @@ impl Cartridge {
 
     // Method to read a byte at an address
     pub fn read_byte(&mut self, address: u16) -> u8 {
-        if address < 0x4000 { 
+        if address < 0x4000 {
             return self.rom_data[address as usize];
         }
 
@@ -521,7 +525,7 @@ impl Cartridge {
             }
             return 0xFF;
         }
-        
+
         // ROM bank 1+ access for MBC1, MBC3, and MBC5
         let rom_address = self.rom_bank_x + (address as usize - 0x4000);
         if rom_address < self.rom_data.len() {
@@ -565,7 +569,8 @@ impl Cartridge {
                 // MBC5: Lower 8 bits of ROM bank (0x2000-0x2FFF)
                 self.rom_bank_value = value;
                 // Calculate full 9-bit bank number (lower 8 bits + upper bit)
-                let full_bank = ((self.mbc5_rom_bank_upper & 0x01) as u16) << 8 | self.rom_bank_value as u16;
+                let full_bank =
+                    ((self.mbc5_rom_bank_upper & 0x01) as u16) << 8 | self.rom_bank_value as u16;
                 self.rom_bank_x = 0x4000 * full_bank as usize;
             } else {
                 if value == 0 {
@@ -589,7 +594,8 @@ impl Cartridge {
                 // Store upper bit for ROM banking
                 self.mbc5_rom_bank_upper = value & 0x01;
                 // Calculate full 9-bit bank number
-                let full_bank = ((self.mbc5_rom_bank_upper & 0x01) as u16) << 8 | self.rom_bank_value as u16;
+                let full_bank =
+                    ((self.mbc5_rom_bank_upper & 0x01) as u16) << 8 | self.rom_bank_value as u16;
                 self.rom_bank_x = 0x4000 * full_bank as usize;
             }
         }
@@ -603,7 +609,7 @@ impl Cartridge {
                         // RAM bank selection
                         self.ram_bank_value = value & 0b1111;
                         self.rtc_selected = false;
-                        
+
                         if self.ram_banking {
                             if self.cart_needs_save() {
                                 self.cart_save_battery();
@@ -618,7 +624,7 @@ impl Cartridge {
                 } else if self.cart_mbc5() {
                     // MBC5 RAM bank handling (4-bit, supports 0-15)
                     self.ram_bank_value = value & 0b1111;
-                    
+
                     if self.ram_banking {
                         if self.cart_needs_save() {
                             self.cart_save_battery();
@@ -628,7 +634,7 @@ impl Cartridge {
                 } else if self.cart_mbc1() {
                     // MBC1 RAM bank handling
                     self.ram_bank_value = value & 0b1111;
-                    
+
                     if self.ram_banking {
                         if self.cart_needs_save() {
                             self.cart_save_battery();
@@ -686,14 +692,14 @@ impl Cartridge {
             let ram_bank_index = self.ram_bank;
             let is_mbc2 = self.cart_mbc2();
             let has_battery = self.battery;
-            
+
             if ram_bank_index >= self.ram_banks.len() {
                 return;
             }
-            
+
             if let Some(ref mut ram_bank) = self.ram_banks[ram_bank_index] {
                 let ram_address = (address - 0xA000) as usize;
-                
+
                 if is_mbc2 {
                     // MBC2: Only 512x4-bit RAM, mapped to 0xA000-0xA1FF
                     if ram_address < 0x200 {
@@ -732,7 +738,9 @@ impl Cartridge {
     }
 
     pub fn cart_mbc1(&self) -> bool {
-        self.rom_header.cart_type == 0x01 || self.rom_header.cart_type == 0x02 || self.rom_header.cart_type == 0x03
+        self.rom_header.cart_type == 0x01
+            || self.rom_header.cart_type == 0x02
+            || self.rom_header.cart_type == 0x03
     }
 
     pub fn cart_mbc3(&self) -> bool {
@@ -741,7 +749,7 @@ impl Cartridge {
             _ => false,
         }
     }
-    
+
     pub fn cart_has_rtc(&self) -> bool {
         match self.rom_header.cart_type {
             0x0F | 0x10 => true, // MBC3+TIMER+BATTERY, MBC3+TIMER+RAM+BATTERY
@@ -765,7 +773,7 @@ impl Cartridge {
         if !self.cart_has_rtc() {
             return;
         }
-        
+
         let now = std::time::SystemTime::now();
         if let Ok(elapsed) = now.duration_since(self.rtc_last_time) {
             let elapsed_seconds = elapsed.as_secs();
@@ -773,34 +781,36 @@ impl Cartridge {
                 // Add elapsed seconds to RTC
                 let mut total_seconds = self.rtc_registers[0] as u64; // Seconds
                 total_seconds += elapsed_seconds;
-                
+
                 // Handle overflow from seconds to minutes
                 if total_seconds >= 60 {
                     let minutes = total_seconds / 60;
                     self.rtc_registers[0] = (total_seconds % 60) as u8;
-                    
+
                     let total_minutes = self.rtc_registers[1] as u64 + minutes;
                     if total_minutes >= 60 {
                         let hours = total_minutes / 60;
                         self.rtc_registers[1] = (total_minutes % 60) as u8;
-                        
+
                         let total_hours = self.rtc_registers[2] as u64 + hours;
                         if total_hours >= 24 {
                             let days = total_hours / 24;
                             self.rtc_registers[2] = (total_hours % 24) as u8;
-                            
+
                             // Handle day counter (9 bits total)
-                            let mut day_counter = ((self.rtc_registers[4] & 0x01) as u16) << 8 | self.rtc_registers[3] as u16;
+                            let mut day_counter = ((self.rtc_registers[4] & 0x01) as u16) << 8
+                                | self.rtc_registers[3] as u16;
                             day_counter = day_counter.wrapping_add(days as u16);
-                            
+
                             // Check for overflow
                             if day_counter > 0x1FF {
                                 self.rtc_registers[4] |= 0x80; // Set carry bit
                                 day_counter &= 0x1FF; // Keep only 9 bits
                             }
-                            
+
                             self.rtc_registers[3] = (day_counter & 0xFF) as u8;
-                            self.rtc_registers[4] = (self.rtc_registers[4] & 0xFE) | ((day_counter >> 8) & 0x01) as u8;
+                            self.rtc_registers[4] =
+                                (self.rtc_registers[4] & 0xFE) | ((day_counter >> 8) & 0x01) as u8;
                         } else {
                             self.rtc_registers[2] = total_hours as u8;
                         }
@@ -810,7 +820,7 @@ impl Cartridge {
                 } else {
                     self.rtc_registers[0] = total_seconds as u8;
                 }
-                
+
                 self.rtc_last_time = now;
             }
         }

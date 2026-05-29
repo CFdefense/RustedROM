@@ -1,10 +1,10 @@
 /**
  * LCD Module - Game Boy LCD Controller Implementation
- * 
+ *
  * This module implements the Game Boy's LCD (Liquid Crystal Display) controller,
  * which manages the display timing, graphics modes, and visual output parameters.
  * The LCD controller coordinates with the PPU to generate the final video signal.
- * 
+ *
  * Key Registers:
  * - LCDC (0xFF40): LCD Control - enables/disables display features
  * - LCDS (0xFF41): LCD Status - current mode and interrupt sources  
@@ -12,32 +12,32 @@
  * - LY/LYC (0xFF44/45): Current scanline and scanline compare
  * - WY/WX (0xFF4A/4B): Window position registers
  * - BGP/OBP0/OBP1 (0xFF47-49): Palette data for colors
- * 
+ *
  * Display Modes:
  * - HBlank (Mode 0): Horizontal blanking - CPU can access VRAM/OAM
  * - VBlank (Mode 1): Vertical blanking - CPU can access VRAM/OAM
  * - OAM (Mode 2): OAM scan - CPU cannot access OAM  
  * - Transfer (Mode 3): Pixel transfer - CPU cannot access VRAM/OAM
- * 
+ *
  * Graphics Features:
  * - 160x144 pixel display with 4-shade grayscale
  * - Background layer with infinite scrolling
  * - Window overlay layer for UI elements
  * - 40 hardware sprites with size/palette/priority control
  * - Programmable palettes for authentic Game Boy colors
- * 
+ *
  * Interrupt Sources:
  * The LCD controller can generate STAT interrupts based on:
  * - HBlank entry, VBlank entry, OAM mode entry
  * - LY == LYC scanline coincidence detection
- * 
+ *
  * The LCD system provides cycle-accurate timing and mode switching
  * to ensure proper game compatibility and visual authenticity.
  */
 
 /**
  * LcdMode - LCD Controller Display Modes
- * 
+ *
  * Represents the four distinct operating modes of the LCD controller.
  * Each mode has specific timing characteristics and memory access restrictions.
  */
@@ -54,7 +54,7 @@ pub enum LcdMode {
 
 /**
  * StatSrc - LCD Status Interrupt Sources
- * 
+ *
  * Bit flags for different interrupt sources in the STAT register.
  * Multiple sources can be enabled simultaneously.
  */
@@ -74,24 +74,24 @@ pub enum StatSrc {
 
 /**
  * LCD - LCD Controller State and Registers
- * 
+ *
  * Manages all LCD control registers, display timing, and color palettes.
  * Provides hardware-accurate register access and palette management
  * for authentic Game Boy graphics output.
  */
 pub struct LCD {
-    pub lcdc: u8,           // LCD Control register (0xFF40)
-    pub lcds: u8,           // LCD Status register (0xFF41)
-    pub scy: u8,            // Scroll Y (0xFF42)
-    pub scx: u8,            // Scroll X (0xFF43)
-    pub ly: u8,             // LY - LCD Y coordinate (0xFF44)
-    pub lyc: u8,            // LY Compare (0xFF45)
-    pub dma: u8,            // DMA Transfer and Start Address (0xFF46)
-    pub bgp: u8,            // BG Palette Data (0xFF47)
-    pub obp0: u8,           // Object Palette 0 Data (0xFF48)
-    pub obp1: u8,           // Object Palette 1 Data (0xFF49)
-    pub wy: u8,             // Window Y Position (0xFF4A)
-    pub wx: u8,             // Window X Position (0xFF4B)
+    pub lcdc: u8, // LCD Control register (0xFF40)
+    pub lcds: u8, // LCD Status register (0xFF41)
+    pub scy: u8,  // Scroll Y (0xFF42)
+    pub scx: u8,  // Scroll X (0xFF43)
+    pub ly: u8,   // LY - LCD Y coordinate (0xFF44)
+    pub lyc: u8,  // LY Compare (0xFF45)
+    pub dma: u8,  // DMA Transfer and Start Address (0xFF46)
+    pub bgp: u8,  // BG Palette Data (0xFF47)
+    pub obp0: u8, // Object Palette 0 Data (0xFF48)
+    pub obp1: u8, // Object Palette 1 Data (0xFF49)
+    pub wy: u8,   // Window Y Position (0xFF4A)
+    pub wx: u8,   // Window X Position (0xFF4B)
 
     // Additional data
     pub bg_colors: [u32; 4],
@@ -103,14 +103,14 @@ pub struct LCD {
 impl LCD {
     pub fn new() -> Self {
         let mut lcd: LCD = LCD {
-            lcdc: 0x91,      // Default value on startup
-            lcds: 0x85,      // Default value on startup
+            lcdc: 0x91, // Default value on startup
+            lcds: 0x85, // Default value on startup
             scy: 0,
             scx: 0,
             ly: 0,
             lyc: 0,
             dma: 0,
-            bgp: 0xFC,        // Default palette
+            bgp: 0xFC, // Default palette
             obp0: 0xFF,
             obp1: 0xFF,
             wy: 0,
@@ -133,56 +133,80 @@ impl LCD {
 
     pub fn lcd_read(&self, address: u16) -> u8 {
         let offset = (address - 0xFF40) as u8;
-        
+
         match offset {
-            0x00 => self.lcdc,      // 0xFF40 - LCD Control
-            0x01 => self.lcds,      // 0xFF41 - LCD Status  
-            0x02 => self.scy,       // 0xFF42 - Scroll Y
-            0x03 => self.scx,       // 0xFF43 - Scroll X
-            0x04 => self.ly,        // 0xFF44 - LY
-            0x05 => self.lyc,       // 0xFF45 - LY Compare
-            0x06 => self.dma,       // 0xFF46 - DMA Transfer
-            0x07 => self.bgp,       // 0xFF47 - BG Palette
-            0x08 => self.obp0,      // 0xFF48 - Object Palette 0
-            0x09 => self.obp1,      // 0xFF49 - Object Palette 1  
-            0x0A => self.wy,        // 0xFF4A - Window Y
-            0x0B => self.wx,        // 0xFF4B - Window X
-            _ => 0xFF,              // Invalid offset
+            0x00 => self.lcdc, // 0xFF40 - LCD Control
+            0x01 => self.lcds, // 0xFF41 - LCD Status
+            0x02 => self.scy,  // 0xFF42 - Scroll Y
+            0x03 => self.scx,  // 0xFF43 - Scroll X
+            0x04 => self.ly,   // 0xFF44 - LY
+            0x05 => self.lyc,  // 0xFF45 - LY Compare
+            0x06 => self.dma,  // 0xFF46 - DMA Transfer
+            0x07 => self.bgp,  // 0xFF47 - BG Palette
+            0x08 => self.obp0, // 0xFF48 - Object Palette 0
+            0x09 => self.obp1, // 0xFF49 - Object Palette 1
+            0x0A => self.wy,   // 0xFF4A - Window Y
+            0x0B => self.wx,   // 0xFF4B - Window X
+            _ => 0xFF,         // Invalid offset
         }
     }
 
     pub fn lcd_write(&mut self, address: u16, value: u8) -> Option<u8> {
         let offset = (address - 0xFF40) as u8;
-        
+
         match offset {
-            0x00 => { 
-                self.lcdc = value; 
-                None 
-            },      // 0xFF40 - LCD Control
-            0x01 => { self.lcds = value; None },      // 0xFF41 - LCD Status
-            0x02 => { self.scy = value; None },       // 0xFF42 - Scroll Y
-            0x03 => { self.scx = value; None },       // 0xFF43 - Scroll X
-            0x04 => { self.ly = value; None },        // 0xFF44 - LY (typically read-only, but allowing write)
-            0x05 => { self.lyc = value; None },       // 0xFF45 - LY Compare
-            0x06 => { self.dma = value; Some(value) }, // 0xFF46 - DMA Transfer - return value to start DMA
-            0x07 => { 
-                self.bgp = value; 
+            0x00 => {
+                self.lcdc = value;
+                None
+            } // 0xFF40 - LCD Control
+            0x01 => {
+                self.lcds = value;
+                None
+            } // 0xFF41 - LCD Status
+            0x02 => {
+                self.scy = value;
+                None
+            } // 0xFF42 - Scroll Y
+            0x03 => {
+                self.scx = value;
+                None
+            } // 0xFF43 - Scroll X
+            0x04 => {
+                self.ly = value;
+                None
+            } // 0xFF44 - LY (typically read-only, but allowing write)
+            0x05 => {
+                self.lyc = value;
+                None
+            } // 0xFF45 - LY Compare
+            0x06 => {
+                self.dma = value;
+                Some(value)
+            } // 0xFF46 - DMA Transfer - return value to start DMA
+            0x07 => {
+                self.bgp = value;
                 self.update_palette(value, 0);
-                None 
-            },       // 0xFF47 - BG Palette
-            0x08 => { 
-                self.obp0 = value; 
+                None
+            } // 0xFF47 - BG Palette
+            0x08 => {
+                self.obp0 = value;
                 self.update_palette(value & 0b11111100, 1);
-                None 
-            },      // 0xFF48 - Object Palette 0
-            0x09 => { 
-                self.obp1 = value; 
+                None
+            } // 0xFF48 - Object Palette 0
+            0x09 => {
+                self.obp1 = value;
                 self.update_palette(value & 0b11111100, 2);
-                None 
-            },      // 0xFF49 - Object Palette 1
-            0x0A => { self.wy = value; None },        // 0xFF4A - Window Y
-            0x0B => { self.wx = value; None },        // 0xFF4B - Window X
-            _ => None,                                // Invalid offset - do nothing
+                None
+            } // 0xFF49 - Object Palette 1
+            0x0A => {
+                self.wy = value;
+                None
+            } // 0xFF4A - Window Y
+            0x0B => {
+                self.wx = value;
+                None
+            } // 0xFF4B - Window X
+            _ => None, // Invalid offset - do nothing
         }
     }
 
@@ -191,7 +215,7 @@ impl LCD {
         let p_colors = match pal {
             1 => &mut self.sp1_colors,
             2 => &mut self.sp2_colors,
-            _ => &mut self.bg_colors,  // Default case (0 and any other value)
+            _ => &mut self.bg_colors, // Default case (0 and any other value)
         };
 
         p_colors[0] = self.default_colors[(palette_data & 0b11) as usize];
@@ -201,7 +225,7 @@ impl LCD {
     }
 
     // LCDC register bit checks
-    
+
     /// BG & Window enable/priority - LCDC_BGW_ENABLE
     pub fn lcdc_bgw_enable(&self) -> bool {
         self.bit(self.lcdc, 0)
@@ -214,17 +238,29 @@ impl LCD {
 
     /// Object height - LCDC_OBJ_HEIGHT
     pub fn lcdc_obj_height(&self) -> u8 {
-        if self.bit(self.lcdc, 2) { 16 } else { 8 }
+        if self.bit(self.lcdc, 2) {
+            16
+        } else {
+            8
+        }
     }
 
     /// BG tile map area - LCDC_BG_MAP_AREA
     pub fn lcdc_bg_map_area(&self) -> u16 {
-        if self.bit(self.lcdc, 3) { 0x9C00 } else { 0x9800 }
+        if self.bit(self.lcdc, 3) {
+            0x9C00
+        } else {
+            0x9800
+        }
     }
 
     /// BG & Window tile data area - LCDC_BGW_DATA_AREA
     pub fn lcdc_bgw_data_area(&self) -> u16 {
-        if self.bit(self.lcdc, 4) { 0x8000 } else { 0x8800 }
+        if self.bit(self.lcdc, 4) {
+            0x8000
+        } else {
+            0x8800
+        }
     }
 
     /// Window enable - LCDC_WIN_ENABLE
@@ -234,7 +270,11 @@ impl LCD {
 
     /// Window tile map area - LCDC_WIN_MAP_AREA
     pub fn lcdc_win_map_area(&self) -> u16 {
-        if self.bit(self.lcdc, 6) { 0x9C00 } else { 0x9800 }
+        if self.bit(self.lcdc, 6) {
+            0x9C00
+        } else {
+            0x9800
+        }
     }
 
     /// LCD enable - LCDC_LCD_ENABLE
@@ -351,11 +391,10 @@ impl LCD {
 
     pub fn update_default_colors(&mut self, new_colors: [u32; 4]) {
         self.default_colors = new_colors;
-        
+
         // Update all palettes with new default colors
         self.update_palette(self.bgp, 0);
         self.update_palette(self.obp0 & 0b11111100, 1);
         self.update_palette(self.obp1 & 0b11111100, 2);
     }
-
-}    
+}

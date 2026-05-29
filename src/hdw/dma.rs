@@ -28,7 +28,7 @@
     Source Address: (byte_value * 0x100) + current_byte
     - Supported ranges: 0x0000-0xDFFF (ROM, VRAM, WRAM)
     - Forbidden ranges: 0xE000-0xFFFF (Echo RAM, OAM, I/O, HRAM)
-    
+
     Destination: OAM (0xFE00-0xFE9F)
     - 160 bytes total (40 sprites × 4 bytes each)
     - Direct write to PPU's Object Attribute Memory
@@ -61,7 +61,7 @@
   Sprite Data Format:
     Each sprite consists of 4 bytes in OAM:
     - Byte 0: Y position (screen coordinate + 16)
-    - Byte 1: X position (screen coordinate + 8) 
+    - Byte 1: X position (screen coordinate + 8)
     - Byte 2: Tile number (sprite pattern index)
     - Byte 3: Attributes (palette, flip, priority flags)
 */
@@ -77,7 +77,6 @@ pub struct DMA {
 }
 
 impl DMA {
-
     pub fn new() -> Self {
         Default::default()
     }
@@ -98,14 +97,14 @@ impl DMA {
             self.start_delay -= 1;
             return false;
         }
-        
+
         let source_address = ((self.byte_value as u16) * 0x100) + self.current_byte as u16;
         let value = bus.read_byte(None, source_address);
         bus.ppu.ppu_oam_write(self.current_byte as u16, value);
-        
+
         self.current_byte = self.current_byte + 1;
         self.active = self.current_byte < 0xA0;
-        
+
         self.active
     }
 
@@ -113,4 +112,3 @@ impl DMA {
         self.active
     }
 }
-

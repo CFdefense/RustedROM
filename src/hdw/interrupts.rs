@@ -7,7 +7,7 @@
 
   Interrupts Enum:
     VBLANK: V-Blank Interrupt - Triggered at end of frame rendering (priority 1)
-    LCDSTAT: LCD Status Interrupt - Triggered by PPU status changes (priority 2) 
+    LCDSTAT: LCD Status Interrupt - Triggered by PPU status changes (priority 2)
     TIMER: Timer Interrupt - Triggered by timer overflow (priority 3)
     SERIAL: Serial Interrupt - Triggered by serial transfer completion (priority 4)
     JOYPAD: Joypad Interrupt - Triggered by button press events (priority 5)
@@ -38,7 +38,7 @@
   Interrupt Vector Table:
     0x40: V-Blank Interrupt Vector - End of frame rendering interrupt
     0x48: LCD Status Interrupt Vector - PPU status change interrupt
-    0x50: Timer Interrupt Vector - Timer overflow interrupt  
+    0x50: Timer Interrupt Vector - Timer overflow interrupt
     0x58: Serial Interrupt Vector - Serial transfer completion interrupt
     0x60: Joypad Interrupt Vector - Button press interrupt
 
@@ -68,9 +68,9 @@
 */
 
 use crate::hdw::cpu::CPU;
-use crate::hdw::stack::*;
 use crate::hdw::debug_timer::log_timer_state;
 use crate::hdw::emu::EmuContext;
+use crate::hdw::stack::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -85,8 +85,8 @@ pub enum Interrupts {
 
 #[derive(Default)]
 pub struct InterruptController {
-    pub ie_register: u8,     // Interrupt Enable register (0xFFFF)
-    pub int_flags: u8,       // Interrupt Flags register (0xFF0F)
+    pub ie_register: u8,      // Interrupt Enable register (0xFFFF)
+    pub int_flags: u8,        // Interrupt Flags register (0xFF0F)
     pub master_enabled: bool, // IME (Interrupt Master Enable)
     pub enabling_ime: bool,   // Flag for delayed IME enabling after EI
 }
@@ -145,12 +145,20 @@ impl InterruptController {
 }
 
 pub fn int_handle(cpu: &mut CPU, address: u16) {
-    stack_push16(cpu, cpu.pc, false); 
+    stack_push16(cpu, cpu.pc, false);
     cpu.pc = address;
 }
 
-pub fn int_check(cpu: &mut CPU, int_controller: &mut InterruptController, ctx: &Arc<Mutex<EmuContext>>, address: u16, int_type: Interrupts) -> bool {
-    if (int_controller.get_int_flags() & int_type as u8) != 0 && (int_controller.ie_register & int_type as u8) != 0 {
+pub fn int_check(
+    cpu: &mut CPU,
+    int_controller: &mut InterruptController,
+    ctx: &Arc<Mutex<EmuContext>>,
+    address: u16,
+    int_type: Interrupts,
+) -> bool {
+    if (int_controller.get_int_flags() & int_type as u8) != 0
+        && (int_controller.ie_register & int_type as u8) != 0
+    {
         if let Interrupts::TIMER = int_type {
             log_timer_state(cpu, ctx, "Timer interrupt triggered");
         }
@@ -163,7 +171,11 @@ pub fn int_check(cpu: &mut CPU, int_controller: &mut InterruptController, ctx: &
     false
 }
 
-pub fn cpu_handle_interrupts(cpu: &mut CPU, int_controller: &mut InterruptController, ctx: &Arc<Mutex<EmuContext>>) {
+pub fn cpu_handle_interrupts(
+    cpu: &mut CPU,
+    int_controller: &mut InterruptController,
+    ctx: &Arc<Mutex<EmuContext>>,
+) {
     if int_check(cpu, int_controller, ctx, 0x40, Interrupts::VBLANK) {
     } else if int_check(cpu, int_controller, ctx, 0x48, Interrupts::LCDSTAT) {
     } else if int_check(cpu, int_controller, ctx, 0x50, Interrupts::TIMER) {

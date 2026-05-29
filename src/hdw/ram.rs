@@ -85,11 +85,14 @@ impl RAM {
         } else {
             address
         };
-        
+
         let offset_address = mapped_address - 0xC000;
 
         if offset_address >= 0x2000 {
-            panic!("INVALID WRAM ADDRESS: {:04X} (mapped: {:04X}, offset: {:04X})", address, mapped_address, offset_address)
+            panic!(
+                "INVALID WRAM ADDRESS: {:04X} (mapped: {:04X}, offset: {:04X})",
+                address, mapped_address, offset_address
+            )
         }
 
         self.wram[offset_address as usize]
@@ -104,11 +107,14 @@ impl RAM {
         } else {
             address
         };
-        
+
         let offset_address = mapped_address - 0xC000;
 
         if offset_address >= 0x2000 {
-            panic!("INVALID WRAM ADDRESS: {:04X} (mapped: {:04X}, offset: {:04X})", address, mapped_address, offset_address)
+            panic!(
+                "INVALID WRAM ADDRESS: {:04X} (mapped: {:04X}, offset: {:04X})",
+                address, mapped_address, offset_address
+            )
         }
 
         self.wram[offset_address as usize] = value;
@@ -119,7 +125,7 @@ impl RAM {
         if address < 0xFF80 || address > 0xFFFE {
             panic!("INVALID HRAM ADDRESS: {:04X}", address);
         }
-        
+
         let offset_address = address - 0xFF80;
         self.hram[offset_address as usize]
     }
@@ -129,7 +135,7 @@ impl RAM {
         if address < 0xFF80 || address > 0xFFFE {
             panic!("INVALID HRAM ADDRESS: {:04X}", address);
         }
-        
+
         let offset_address = address - 0xFF80;
         self.hram[offset_address as usize] = value;
     }

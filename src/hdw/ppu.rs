@@ -1,47 +1,46 @@
+use crate::hdw::interrupts::Interrupts;
 /**
  * PPU Module - Game Boy Picture Processing Unit
- * 
+ *
  * This module implements the Game Boy's Picture Processing Unit (PPU), which is responsible
  * for generating the video output displayed on the LCD screen. The PPU operates in parallel
  * with the CPU and manages graphics rendering, sprite display, and LCD timing.
- * 
+ *
  * Core Components:
  * - Video RAM (VRAM): 8KB for tile data and tile maps
  * - Object Attribute Memory (OAM): 160 bytes for sprite attributes  
  * - LCD Controller: Manages display timing and rendering modes
  * - Pixel Pipeline: Fetches and processes background/window/sprite pixels
  * - DMA Controller: Transfers sprite data during specific timing windows
- * 
+ *
  * Rendering Pipeline:
  * 1. OAM Scan: Search for sprites visible on current scanline
  * 2. Pixel Transfer: Fetch background, window, and sprite data
  * 3. HBlank: Horizontal blanking period between scanlines
  * 4. VBlank: Vertical blanking period after frame completion
- * 
+ *
  * LCD Modes and Timing:
  * - Mode 0 (HBlank): 204 cycles - CPU can access VRAM/OAM
  * - Mode 1 (VBlank): 4560 cycles - CPU can access VRAM/OAM  
  * - Mode 2 (OAM): 80 cycles - CPU cannot access OAM
  * - Mode 3 (Transfer): 172 cycles - CPU cannot access VRAM/OAM
- * 
+ *
  * Graphics Features:
  * - 160x144 pixel display with 4-color grayscale palette
  * - 40 hardware sprites (8x8 or 8x16 pixels) with priority system
  * - Background and window layers with scrolling support
  * - Hardware-accelerated pixel FIFO for authentic timing
- * 
+ *
  * The PPU achieves cycle-accurate timing to ensure proper game compatibility
  * and authentic visual behavior matching original Game Boy hardware.
  */
-
-use crate::hdw::lcd::{LCD, LcdMode, StatSrc};
-use crate::hdw::interrupts::Interrupts;
-use crate::hdw::ui::{get_ticks, delay};
-use crate::hdw::ppu_pipeline::{PixelFIFO, FIFOState};
+use crate::hdw::lcd::{LcdMode, StatSrc, LCD};
+use crate::hdw::ppu_pipeline::{FIFOState, PixelFIFO};
+use crate::hdw::ui::{delay, get_ticks};
 
 /**
  * OAMEntry - Object Attribute Memory Entry
- * 
+ *
  * Represents a single sprite's attributes stored in OAM.
  * Each sprite uses 4 bytes in OAM memory (40 sprites total).
  */
@@ -58,14 +57,14 @@ pub struct OAMEntry {
 }
 
 // Display timing constants matching Game Boy hardware specifications
-const LINES_PER_FRAME: u8 = 154;  // Total scanlines including VBlank
-const TICKS_PER_LINE: u32 = 456;   // CPU cycles per scanline
-const YRES: u8 = 144;              // Visible scanlines  
-const XRES: u8 = 160;              // Pixels per scanline
+const LINES_PER_FRAME: u8 = 154; // Total scanlines including VBlank
+const TICKS_PER_LINE: u32 = 456; // CPU cycles per scanline
+const YRES: u8 = 144; // Visible scanlines
+const XRES: u8 = 160; // Pixels per scanline
 
 /**
  * OAMLineEntry - Linked List Node for Sprite Processing
- * 
+ *
  * Used to build sorted lists of sprites visible on current scanline.
  * Sprites are sorted by X position for proper priority handling.
  */
@@ -78,12 +77,8 @@ pub struct OAMLineEntry {
 
 impl OAMLineEntry {
     pub fn new(entry: OAMEntry) -> Self {
-        OAMLineEntry {
-            entry,
-            next: None,
-        }
+        OAMLineEntry { entry, next: None }
     }
-
 }
 
 impl OAMEntry {
@@ -112,11 +107,11 @@ impl OAMEntry {
 
 /**
  * PPU - Picture Processing Unit Controller
- * 
+ *
  * Main PPU controller that manages all graphics rendering operations.
  * Coordinates between LCD timing, pixel pipeline, sprite processing,
  * and frame generation to produce authentic Game Boy video output.
- * 
+ *
  * The PPU operates in four distinct modes during each frame:
  * - OAM Scan: Find sprites for current scanline
  * - Pixel Transfer: Render pixels using background, window, and sprites  
@@ -126,15 +121,15 @@ impl OAMEntry {
 pub struct PPU {
     pub oam_ram: [OAMEntry; 40],
     pub vram: [u8; 0x2000],
-    pub ly: u8,           // Current scanline
-    pub current_frame: u32, // Current frame number
+    pub ly: u8,                 // Current scanline
+    pub current_frame: u32,     // Current frame number
     pub video_buffer: Vec<u32>, // Video buffer for frame (YRES * XRES * 32-bit pixels)
-    pub line_ticks: u32,  // Ticks for current scanline
-    pub lcd: LCD,         // LCD controller
+    pub line_ticks: u32,        // Ticks for current scanline
+    pub lcd: LCD,               // LCD controller
     pub pixel_fifo: PixelFIFO,
 
     // Sprite/fifo info
-    pub line_sprite_count: u8, // 0 - 10 sprites per line
+    pub line_sprite_count: u8,                   // 0 - 10 sprites per line
     pub line_sprites: Option<Box<OAMLineEntry>>, // linked list of current line sprites
     pub line_entry_array: [OAMLineEntry; 10],
     pub fetched_entry_count: u8,
@@ -183,15 +178,15 @@ impl PPU {
 
         // Set initial LCD mode to OAM
         ppu.lcd.lcds_mode_set(LcdMode::OAM);
-        
+
         ppu
     }
-    
+
     pub fn pipeline_process(&mut self) {
         // Instead of using unsafe code, manually inline the pipeline operations
         self.pixel_fifo.map_y = self.lcd.ly.wrapping_add(self.lcd.scy);
         self.pixel_fifo.map_x = self.pixel_fifo.fetch_x.wrapping_add(self.lcd.scx);
-        
+
         // Calculate tile_y - use window relative position if window is active
         if self.window_visible() && self.lcd.ly >= self.lcd.wy {
             let window_x = self.lcd.wx;
@@ -208,7 +203,8 @@ impl PPU {
             self.pixel_fifo.tile_y = ((self.lcd.ly.wrapping_add(self.lcd.scy)) % 8) * 2;
         }
 
-        if (self.line_ticks & 1) == 0 { // Even Line
+        if (self.line_ticks & 1) == 0 {
+            // Even Line
             self.pipeline_fetch();
         }
 
@@ -220,17 +216,18 @@ impl PPU {
             FIFOState::TILE => {
                 self.fetched_entry_count = 0;
                 self.check_window_state(); // Check window state before fetching tiles
-                
+
                 if self.lcd.lcdc_bgw_enable() {
                     // First load background tile
-                    let map_address = self.lcd.lcdc_bg_map_area() + 
-                        ((self.pixel_fifo.map_x / 8) as u16) + 
-                        (((self.pixel_fifo.map_y / 8) as u16) * 32);
-                    
+                    let map_address = self.lcd.lcdc_bg_map_area()
+                        + ((self.pixel_fifo.map_x / 8) as u16)
+                        + (((self.pixel_fifo.map_y / 8) as u16) * 32);
+
                     self.pixel_fifo.bgw_fetch_data[0] = self.read_vram(map_address);
 
                     if self.lcd.lcdc_bgw_data_area() == 0x8800 {
-                        self.pixel_fifo.bgw_fetch_data[0] = self.pixel_fifo.bgw_fetch_data[0].wrapping_add(128);
+                        self.pixel_fifo.bgw_fetch_data[0] =
+                            self.pixel_fifo.bgw_fetch_data[0].wrapping_add(128);
                     }
 
                     // Check if window should override background
@@ -248,28 +245,28 @@ impl PPU {
 
                 self.pixel_fifo.state = FIFOState::DATA0;
                 self.pixel_fifo.fetch_x = self.pixel_fifo.fetch_x.wrapping_add(8);
-            },
+            }
             FIFOState::DATA0 => {
-                let data_address = self.lcd.lcdc_bgw_data_area() +
-                    ((self.pixel_fifo.bgw_fetch_data[0] as u16) * 16) +
-                    (self.pixel_fifo.tile_y as u16);
+                let data_address = self.lcd.lcdc_bgw_data_area()
+                    + ((self.pixel_fifo.bgw_fetch_data[0] as u16) * 16)
+                    + (self.pixel_fifo.tile_y as u16);
 
                 self.pixel_fifo.bgw_fetch_data[1] = self.read_vram(data_address);
                 self.pipeline_load_sprite_data(0);
                 self.pixel_fifo.state = FIFOState::DATA1;
-            },
+            }
             FIFOState::DATA1 => {
-                let data_address = self.lcd.lcdc_bgw_data_area() +
-                    ((self.pixel_fifo.bgw_fetch_data[0] as u16) * 16) +
-                    (self.pixel_fifo.tile_y as u16 + 1);
+                let data_address = self.lcd.lcdc_bgw_data_area()
+                    + ((self.pixel_fifo.bgw_fetch_data[0] as u16) * 16)
+                    + (self.pixel_fifo.tile_y as u16 + 1);
 
                 self.pixel_fifo.bgw_fetch_data[2] = self.read_vram(data_address);
                 self.pipeline_load_sprite_data(1);
                 self.pixel_fifo.state = FIFOState::IDLE;
-            },
+            }
             FIFOState::IDLE => {
                 self.pixel_fifo.state = FIFOState::PUSH;
-            },
+            }
             FIFOState::PUSH => {
                 if self.pipeline_add() {
                     self.pixel_fifo.state = FIFOState::TILE;
@@ -294,7 +291,7 @@ impl PPU {
             // Check if we actually rendered any window pixels on this line
             let window_x = self.lcd.wx.saturating_sub(7);
             if window_x < XRES {
-            self.window_line += 1;
+                self.window_line += 1;
             }
         }
 
@@ -302,14 +299,14 @@ impl PPU {
 
         if self.ly == self.lcd.lyc {
             self.lcd.lcds_lyc_set(true);
-            
+
             if self.lcd.lcds_stat_int(StatSrc::LYC) {
                 interrupts.push(Interrupts::LCDSTAT);
             }
         } else {
             self.lcd.lcds_lyc_set(false);
         }
-        
+
         interrupts
     }
 
@@ -353,7 +350,7 @@ impl PPU {
 
     fn ppu_mode_vblank(&mut self) -> Vec<Interrupts> {
         let mut interrupts = Vec::new();
-        
+
         if self.line_ticks >= TICKS_PER_LINE {
             interrupts.extend(self.increment_ly());
 
@@ -365,13 +362,13 @@ impl PPU {
 
             self.line_ticks = 0;
         }
-        
+
         interrupts
     }
 
     fn ppu_mode_hblank(&mut self, cart: &mut crate::hdw::cart::Cartridge) -> Vec<Interrupts> {
         let mut interrupts = Vec::new();
-        
+
         if self.line_ticks >= TICKS_PER_LINE {
             interrupts.extend(self.increment_ly());
 
@@ -413,13 +410,13 @@ impl PPU {
 
             self.line_ticks = 0;
         }
-        
+
         interrupts
     }
 
     pub fn ppu_tick(&mut self, cart: &mut crate::hdw::cart::Cartridge) -> Vec<Interrupts> {
         self.line_ticks += 1;
-        
+
         match self.lcd.lcds_mode() {
             LcdMode::OAM => self.ppu_mode_oam(),
             LcdMode::Transfer => self.ppu_mode_xfer(),
@@ -463,48 +460,50 @@ impl PPU {
     pub fn load_line_sprites(&mut self) {
         let cur_y = self.lcd.ly as i16;
         let sprite_height = self.lcd.lcdc_obj_height() as i16;
-        
+
         // Clear line entry array
         self.line_entry_array = std::array::from_fn(|_| OAMLineEntry::new(OAMEntry::new()));
-        
+
         for i in 0..40 {
             let entry: OAMEntry = self.oam_ram[i];
-            
+
             if entry.x == 0 {
                 continue;
             }
-            
+
             // max 10 sprites allowed per line
             if self.line_sprite_count >= 10 {
                 break;
             }
-            
+
             // Check if sprite is on current line (Game Boy sprites have Y offset of 16)
             if entry.y <= cur_y as u8 + 16 && entry.y + sprite_height as u8 > cur_y as u8 + 16 {
                 let entry_index = self.line_sprite_count as usize;
                 self.line_entry_array[entry_index] = OAMLineEntry::new(entry);
                 self.line_sprite_count += 1;
-                
+
                 // Insert into sorted linked list by x position
-                if self.line_sprites.is_none() || 
-                   self.line_sprites.as_ref().unwrap().entry.x > entry.x {
+                if self.line_sprites.is_none()
+                    || self.line_sprites.as_ref().unwrap().entry.x > entry.x
+                {
                     let mut new_entry = Box::new(OAMLineEntry::new(entry));
                     new_entry.next = self.line_sprites.take();
                     self.line_sprites = Some(new_entry);
                     continue;
                 }
-                
+
                 // Find insertion point in sorted list
                 if let Some(ref mut head) = self.line_sprites {
                     let mut current = head;
-                    
+
                     loop {
-                        let should_insert_after_current = if let Some(ref next_node) = current.next {
+                        let should_insert_after_current = if let Some(ref next_node) = current.next
+                        {
                             next_node.entry.x > entry.x
                         } else {
                             true
                         };
-                        
+
                         if should_insert_after_current {
                             if current.next.is_some() {
                                 let mut new_entry = Box::new(OAMLineEntry::new(entry));
@@ -515,7 +514,7 @@ impl PPU {
                             }
                             break;
                         }
-                        
+
                         if let Some(ref mut next) = current.next {
                             current = next;
                         } else {
@@ -536,9 +535,17 @@ impl PPU {
 
         for i in 0..8 {
             let bit = 7 - i;
-            let hi = if (self.pixel_fifo.bgw_fetch_data[1] & (1 << bit)) != 0 { 1 } else { 0 };
-            let lo = if (self.pixel_fifo.bgw_fetch_data[2] & (1 << bit)) != 0 { 2 } else { 0 };
-            
+            let hi = if (self.pixel_fifo.bgw_fetch_data[1] & (1 << bit)) != 0 {
+                1
+            } else {
+                0
+            };
+            let lo = if (self.pixel_fifo.bgw_fetch_data[2] & (1 << bit)) != 0 {
+                2
+            } else {
+                0
+            };
+
             let mut color_index = hi | lo;
             let mut color: u32 = self.lcd.bg_colors[color_index as usize];
 
@@ -567,8 +574,9 @@ impl PPU {
                 let x = self.pixel_fifo.pushed_x as usize;
                 let y = self.lcd.ly as usize;
                 let buffer_index = x + (y * XRES as usize);
-                
-                if x < XRES as usize && y < YRES as usize && buffer_index < self.video_buffer.len() {
+
+                if x < XRES as usize && y < YRES as usize && buffer_index < self.video_buffer.len()
+                {
                     self.video_buffer[buffer_index] = pixel_data;
                 }
                 self.pixel_fifo.pushed_x += 1;
@@ -579,20 +587,22 @@ impl PPU {
 
     fn pipeline_load_sprite_tile(&mut self) {
         let mut current_sprite = self.line_sprites.as_ref();
-        
+
         while let Some(le) = current_sprite {
             let sp_x = (le.entry.x as i16 - 8) + (self.lcd.scx % 8) as i16;
-            
-            if (sp_x >= self.pixel_fifo.fetch_x as i16 && sp_x < self.pixel_fifo.fetch_x as i16 + 8) ||
-                ((sp_x + 8) >= self.pixel_fifo.fetch_x as i16 && (sp_x + 8) < self.pixel_fifo.fetch_x as i16 + 8) {
+
+            if (sp_x >= self.pixel_fifo.fetch_x as i16 && sp_x < self.pixel_fifo.fetch_x as i16 + 8)
+                || ((sp_x + 8) >= self.pixel_fifo.fetch_x as i16
+                    && (sp_x + 8) < self.pixel_fifo.fetch_x as i16 + 8)
+            {
                 if (self.fetched_entry_count as usize) < 3 {
                     self.fetched_entries[self.fetched_entry_count as usize] = le.entry;
                     self.fetched_entry_count += 1;
                 }
             }
-            
+
             current_sprite = le.next.as_ref();
-            
+
             if current_sprite.is_none() || self.fetched_entry_count >= 3 {
                 break;
             }
@@ -604,8 +614,10 @@ impl PPU {
         let sprite_height = self.lcd.lcdc_obj_height();
 
         for i in 0..self.fetched_entry_count as usize {
-            if i >= 3 { break; }
-            
+            if i >= 3 {
+                break;
+            }
+
             let mut ty = ((cur_y + 16 - self.fetched_entries[i].y as i16) * 2) as u8;
 
             let f_y_flip = (self.fetched_entries[i].flags & (1 << 6)) != 0;
@@ -625,43 +637,53 @@ impl PPU {
 
     fn fetch_sprite_pixels(&self, _bit: u8, color: u32, bg_color: u8) -> u32 {
         let mut result_color = color;
-        
+
         for i in 0..self.fetched_entry_count as usize {
-            if i >= 3 { break; }
-            
+            if i >= 3 {
+                break;
+            }
+
             let sprite = &self.fetched_entries[i];
             let sp_x = (sprite.x as i16 - 8) + (self.lcd.scx % 8) as i16;
-            
+
             if sp_x + 8 < self.pixel_fifo.fifo_x as i16 {
                 continue;
             }
 
             let offset = (self.pixel_fifo.fifo_x as i16) - sp_x;
-            
+
             if offset < 0 || offset > 7 {
                 continue;
             }
 
             let mut bit = 7 - offset;
-            
+
             let f_x_flip = (sprite.flags & (1 << 5)) != 0;
             if f_x_flip {
                 bit = offset;
             }
 
-            let hi = if (self.pixel_fifo.fetch_entry_data[i * 2] & (1 << bit)) != 0 { 1 } else { 0 };
-            let lo = if (self.pixel_fifo.fetch_entry_data[(i * 2) + 1] & (1 << bit)) != 0 { 2 } else { 0 };
-            
+            let hi = if (self.pixel_fifo.fetch_entry_data[i * 2] & (1 << bit)) != 0 {
+                1
+            } else {
+                0
+            };
+            let lo = if (self.pixel_fifo.fetch_entry_data[(i * 2) + 1] & (1 << bit)) != 0 {
+                2
+            } else {
+                0
+            };
+
             let bg_priority = (sprite.flags & (1 << 7)) != 0;
             let sprite_color_index = hi | lo;
-            
+
             if sprite_color_index == 0 {
                 continue; // Transparent sprite pixel
             }
 
             if !bg_priority || bg_color == 0 {
                 let f_pn = (sprite.flags & (1 << 4)) != 0;
-                
+
                 result_color = if f_pn {
                     self.lcd.sp2_colors[sprite_color_index as usize]
                 } else {
@@ -682,25 +704,25 @@ impl PPU {
             return;
         }
 
-        let window_x = self.lcd.wx.saturating_sub(7);  // WX=7 means window starts at x=0
-        
-        // Calculate window tile coordinates  
+        let window_x = self.lcd.wx.saturating_sub(7); // WX=7 means window starts at x=0
+
+        // Calculate window tile coordinates
         let win_tile_x = ((self.pixel_fifo.fetch_x + 7).saturating_sub(window_x)) / 8;
-        
+
         // Use window_line instead of calculating from LY
         let win_tile_y = self.window_line / 8;
 
         // Ensure we're within bounds
         if win_tile_x < 32 && win_tile_y < 32 {
             // Get the tile index from the window map
-            let map_address = self.lcd.lcdc_win_map_area() + 
-                (win_tile_x as u16) + 
-                (win_tile_y as u16 * 32);
-            
+            let map_address =
+                self.lcd.lcdc_win_map_area() + (win_tile_x as u16) + (win_tile_y as u16 * 32);
+
             self.pixel_fifo.bgw_fetch_data[0] = self.read_vram(map_address);
 
             if self.lcd.lcdc_bgw_data_area() == 0x8800 {
-                self.pixel_fifo.bgw_fetch_data[0] = self.pixel_fifo.bgw_fetch_data[0].wrapping_add(128);
+                self.pixel_fifo.bgw_fetch_data[0] =
+                    self.pixel_fifo.bgw_fetch_data[0].wrapping_add(128);
             }
         }
     }

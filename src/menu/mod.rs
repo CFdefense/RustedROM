@@ -40,11 +40,12 @@
     - Consistent theming with Game Boy-inspired color scheme
 */
 
-pub mod menu_state;
-pub mod menu_renderer;
+pub mod color_palette;
 pub mod game_scanner;
+pub mod menu;
+pub mod menu_renderer;
+pub mod rom_catalog;
 
 // Re-export main types for easy access
-pub use menu_state::*;
+pub use game_scanner::*;
 pub use menu_renderer::*;
-pub use game_scanner::*; 

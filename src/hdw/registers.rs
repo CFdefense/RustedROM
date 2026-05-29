@@ -57,7 +57,7 @@
     - High byte stored in left register, low byte in right register
     - AF: A (high), F (low) - Accumulator and flags
     - BC: B (high), C (low) - General purpose pair
-    - DE: D (high), E (low) - General purpose pair  
+    - DE: D (high), E (low) - General purpose pair
     - HL: H (high), L (low) - Memory pointer pair
 
   Performance Optimization:
@@ -167,9 +167,9 @@ impl std::convert::From<u8> for FlagsRegister {
 
 impl FlagsRegister {
     pub fn as_byte(&self) -> u8 {
-        (self.zero as u8) << 7 |
-        (self.subtract as u8) << 6 |
-        (self.half_carry as u8) << 5 |
-        (self.carry as u8) << 4
+        (self.zero as u8) << 7
+            | (self.subtract as u8) << 6
+            | (self.half_carry as u8) << 5
+            | (self.carry as u8) << 4
     }
 }
