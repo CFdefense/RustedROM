@@ -1,15 +1,13 @@
 use std::path::PathBuf;
 
-use crate::menu::rom_catalog;
-
 use super::color_palette::ColorPalette;
 use super::rom_catalog::{ROMCatalog, ROM};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuState {
-    MainMenu,
+    MainMenu(MainMenuOption),
     Credits,
-    ROMSelection,
+    ROMSelection(ROMTab),
     PaletteSelection,
     ROMOpen(String),
 }
@@ -18,6 +16,13 @@ pub enum MenuState {
 pub enum ROMTab {
     GameRoms,
     TestRoms,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MainMenuOption {
+    ROMs,
+    Palette,
+    Credits,
 }
 
 pub struct Menu {
@@ -33,14 +38,13 @@ pub struct Menu {
     pub credits_scroll: f32,
     pub animation_time: f32,
     pub debug: bool,
-    pub current_tab: ROMTab,
 }
 
 impl Menu {
     pub fn new(rom_dir: PathBuf, debug: bool) -> Self {
         Menu {
             rom_catalog: ROMCatalog::new(&rom_dir),
-            current_state: MenuState::MainMenu,
+            current_state: MenuState::MainMenu(MainMenuOption::ROMS)
             selected_main_option: 0,
             selected_rom_index: 0,
             selected_palette_index: 0,
@@ -51,7 +55,6 @@ impl Menu {
             credits_scroll: 0.0,
             animation_time: 0.0,
             debug,
-            current_tab: ROMTab::GameRoms,
         }
     }
 
@@ -66,7 +69,7 @@ impl Menu {
                     self.selected_main_option -= 1;
                 }
             }
-            MenuState::ROMSelection => {
+            MenuState::ROMSelection(_) => {
                 if self.selected_rom_index > 0 {
                     self.selected_rom_index -= 1;
                     if self.selected_rom_index < self.scroll_offset {
@@ -90,7 +93,7 @@ impl Menu {
                     self.selected_main_option += 1;
                 }
             }
-            MenuState::ROMSelection => {
+            MenuState::ROMSelection(_) => {
                 let max_index = self.get_tab_roms().len().saturating_sub(1);
                 if self.selected_rom_index < max_index {
                     self.selected_rom_index += 1;
@@ -110,19 +113,19 @@ impl Menu {
 
     pub fn select(&mut self) -> Option<String> {
         match self.current_state {
-            MenuState::MainMenu => {
-                match self.selected_main_option {
-                    0 => {
+            MenuState::MainMenu(menu_option) => {
+                match menu_option {
+                    MainMenuOption::ROMs => {
                         // Start
-                        self.current_state = MenuState::ROMSelection;
+                        self.current_state = MenuState::ROMSelection(ROMTab::GameRoms);
                         None
                     }
-                    1 => {
+                    MainMenuOption::Palette => {
                         // Palette
                         self.current_state = MenuState::PaletteSelection;
                         None
                     }
-                    2 => {
+                    MainMenuOption::Credits => {
                         // Credits
                         self.current_state = MenuState::Credits;
                         self.credits_scroll = 0.0;

@@ -41,11 +41,12 @@
 */
 
 pub mod color_palette;
-pub mod game_scanner;
 pub mod menu;
 pub mod menu_renderer;
 pub mod rom_catalog;
 
 // Re-export main types for easy access
-pub use game_scanner::*;
 pub use menu_renderer::*;
+pub use rom_catalog::*;
+pub use menu::*;
+pub use color_palette::*;

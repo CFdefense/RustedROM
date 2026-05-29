@@ -1,4 +1,4 @@
-use crate::menu::{GameInfo, MenuContext, MenuState};
+use crate::menu::{Menu, MenuState, ROMTab};
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::surface::Surface;
@@ -16,25 +16,25 @@ impl MenuRenderer {
 
     pub fn render_menu(
         surface: &mut Surface,
-        menu_context: &MenuContext,
+        menu_context: &MenuState,
         screen_width: u32,
         screen_height: u32,
     ) {
         // Clear background
         surface.fill_rect(None, Self::BG_COLOR).unwrap();
 
-        match menu_context.current_state {
+        match menu_context {
             MenuState::MainMenu => {
                 Self::render_main_menu(surface, menu_context, screen_width, screen_height)
             }
             MenuState::Credits => Self::render_credits(surface, screen_width, screen_height),
-            MenuState::GameSelection => {
+            MenuState::ROMSelection(_) => {
                 Self::render_game_selection(surface, menu_context, screen_width, screen_height)
             }
             MenuState::PaletteSelection => {
                 Self::render_palette_selection(surface, menu_context, screen_width, screen_height)
             }
-            MenuState::InGame(_) => {
+            MenuState::ROMOpen(_) => {
                 // Game is running, don't render menu
             }
         }
