@@ -6,7 +6,7 @@ use super::rom_catalog::{ROMCatalog, ROM};
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuState {
     MainMenu(usize),
-    Credits,
+    Credits(f32),
     ROMSelection(ROMTab),
     PaletteSelection(usize),
     ROMOpen(String),
@@ -25,7 +25,6 @@ pub struct Menu {
     pub available_palettes: Vec<ColorPalette>,
     pub scroll_offset: usize,
     pub max_visible_games: usize,
-    pub credits_scroll: f32,
     pub animation_time: f32,
     pub debug: bool,
 }
@@ -39,7 +38,6 @@ impl Menu {
             available_palettes: ColorPalette::all_palettes(),
             scroll_offset: 0,
             max_visible_games: 12,
-            credits_scroll: 0.0,
             animation_time: 0.0,
             debug,
         }
@@ -123,80 +121,71 @@ impl Menu {
         }
     }
 
-    pub fn select(&mut self) -> Option<String> {
+    pub fn select(&mut self) {
         match &self.current_state {
-            MenuState::MainMenu => {
-                match menu_option {
-                    MainMenuOption::ROMs => {
-                        // Start
-                        self.current_state = MenuState::ROMSelection(ROMTab::GameRoms);
-                        None
+            MenuState::MainMenu(idx) => {
+                match idx {
+                    0 => {
+                        // ROM page selected 
+                        self.current_state = MenuState::ROMSelection(ROMTab::GameRoms(0));
                     }
-                    MainMenuOption::Palette => {
-                        // Palette
-                        self.current_state = MenuState::PaletteSelection;
-                        None
+                    1 => {
+                        // Palette page selected 
+                        self.current_state = MenuState::PaletteSelection(0);
                     }
-                    MainMenuOption::Credits => {
-                        // Credits
-                        self.current_state = MenuState::Credits;
-                        self.credits_scroll = 0.0;
-                        None
+                    2 => {
+                        // Credits page selected
+                        self.current_state = MenuState::Credits(0.0);
                     }
                 }
             }
-            MenuState::ROMSelection(_) => {
+            MenuState::ROMSelection(tab) => {
+                let idx = match tab {
+                    ROMTab::GameRoms(idx) => idx,
+                    ROMTab::TestRoms(idx) => idx,
+                };
+
                 // Get filtered roms for current tab
                 let filtered_roms = self.get_tab_roms();
 
                 // Get the rom at the filtered index
-                if let Some(rom) = filtered_roms.get(self.selected_rom_index) {
-                    let rom_path = rom.path.clone();
-                    self.current_state = MenuState::ROMOpen(rom_path.clone());
-                    Some(rom_path)
-                } else {
-                    None
+                if let Some(rom) = filtered_roms.get(*idx) {
+                    if let Some(palette) = self.available_palettes.get(*idx) {
+                        self.current_palette = palette.clone();
+                    }
                 }
             }
-            MenuState::PaletteSelection => {
-                if let Some(palette) = self.available_palettes.get(self.selected_palette_index) {
-                    self.current_palette = palette.clone();
-                    println!("Selected palette: {}", palette.get_name());
-                }
-                None
-            }
-            _ => None,
+            _ => {} 
         }
     }
 
     pub fn back(&mut self) {
         match self.current_state {
-            MenuState::Credits => {
-                self.current_state = MenuState::MainMenu;
+            MenuState::Credits(_) => {
+                self.current_state = MenuState::MainMenu(0);
             }
-            MenuState::ROMSelection => {
-                self.current_state = MenuState::MainMenu;
+            MenuState::ROMSelection(_) => {
+                self.current_state = MenuState::MainMenu(0);
             }
-            MenuState::PaletteSelection => {
-                self.current_state = MenuState::MainMenu;
+            MenuState::PaletteSelection(0) => {
+                self.current_state = MenuState::MainMenu(0);
             }
             MenuState::ROMOpen(_) => {
-                self.current_state = MenuState::ROMSelection;
+                self.current_state = MenuState::ROMSelection(ROMTab::GameRoms(0));
             }
             _ => {}
         }
     }
 
-    pub fn exit_rom(&mut self) {
-        if matches!(self.current_state, MenuState::ROMOpen(_)) {
-            self.current_state = MenuState::ROMSelection;
-        }
-    }
-
     pub fn get_tab_roms(&self) -> Vec<&ROM> {
-        match self.current_tab {
-            ROMTab::GameRoms => self.rom_catalog.game_roms.iter().collect(),
-            ROMTab::TestRoms => self.rom_catalog.test_roms.iter().collect(),
+        match &self.current_state {
+            MenuState::ROMSelection(tab) => {
+                match tab {
+                    ROMTab::GameRoms(_) => self.rom_catalog.game_roms.iter().collect(),
+                    ROMTab::TestRoms(_) => self.rom_catalog.test_roms.iter().collect(),
+                }
+            }
+            _ => vec![] 
         }
     }
     pub fn get_visible_roms(&self) -> Vec<(usize, &ROM)> {
