@@ -77,4 +77,8 @@ impl ROMCatalog {
 
         catalog
     }
+
+    pub fn len(&self) -> usize {
+        self.game_roms.len().wrapping_add(self.test_roms.len())
+    }
 }

@@ -5,32 +5,22 @@ use super::rom_catalog::{ROMCatalog, ROM};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuState {
-    MainMenu(MainMenuOption),
+    MainMenu(usize),
     Credits,
     ROMSelection(ROMTab),
-    PaletteSelection,
+    PaletteSelection(usize),
     ROMOpen(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ROMTab {
-    GameRoms,
-    TestRoms,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum MainMenuOption {
-    ROMs,
-    Palette,
-    Credits,
+    GameRoms(usize),
+    TestRoms(usize),
 }
 
 pub struct Menu {
     pub rom_catalog: ROMCatalog,
     pub current_state: MenuState,
-    pub selected_main_option: usize, // 0 = Start, 1 = Palette, 2 = Credits
-    pub selected_rom_index: usize,
-    pub selected_palette_index: usize,
     pub current_palette: ColorPalette,
     pub available_palettes: Vec<ColorPalette>,
     pub scroll_offset: usize,
@@ -44,10 +34,7 @@ impl Menu {
     pub fn new(rom_dir: PathBuf, debug: bool) -> Self {
         Menu {
             rom_catalog: ROMCatalog::new(&rom_dir),
-            current_state: MenuState::MainMenu(MainMenuOption::ROMS)
-            selected_main_option: 0,
-            selected_rom_index: 0,
-            selected_palette_index: 0,
+            current_state: MenuState::MainMenu(0),
             current_palette: ColorPalette::ClassicGameBoy,
             available_palettes: ColorPalette::all_palettes(),
             scroll_offset: 0,
@@ -63,23 +50,35 @@ impl Menu {
     }
 
     pub fn navigate_up(&mut self) {
-        match self.current_state {
-            MenuState::MainMenu => {
-                if self.selected_main_option > 0 {
-                    self.selected_main_option -= 1;
+        match &mut self.current_state {
+            MenuState::MainMenu(idx) => {
+                if *idx > 0 {
+                   *idx -= 1;
                 }
             }
-            MenuState::ROMSelection(_) => {
-                if self.selected_rom_index > 0 {
-                    self.selected_rom_index -= 1;
-                    if self.selected_rom_index < self.scroll_offset {
-                        self.scroll_offset = self.selected_rom_index;
+            MenuState::ROMSelection(tab) => {
+                match tab {
+                    ROMTab::GameRoms(idx) => {
+                        if *idx > 0 {
+                            *idx -= 1;
+                            if *idx < self.scroll_offset {
+                                self.scroll_offset = *idx;
+                            }
+                        }
+                    }
+                    ROMTab::TestRoms(idx) => {
+                        if *idx > 0 {
+                            *idx -= 1;
+                            if *idx < self.scroll_offset {
+                                self.scroll_offset = *idx;
+                            }
+                        }
                     }
                 }
             }
-            MenuState::PaletteSelection => {
-                if self.selected_palette_index > 0 {
-                    self.selected_palette_index -= 1;
+            MenuState::PaletteSelection(idx) => {
+                if *idx > 0 {
+                    *idx -= 1;
                 }
             }
             _ => {}
@@ -87,24 +86,37 @@ impl Menu {
     }
 
     pub fn navigate_down(&mut self) {
-        match self.current_state {
-            MenuState::MainMenu => {
-                if self.selected_main_option < 2 {
-                    self.selected_main_option += 1;
+        match &mut self.current_state {
+            MenuState::MainMenu(idx) => {
+                if *idx < 2 {
+                    *idx += 1;
                 }
             }
-            MenuState::ROMSelection(_) => {
-                let max_index = self.get_tab_roms().len().saturating_sub(1);
-                if self.selected_rom_index < max_index {
-                    self.selected_rom_index += 1;
-                    if self.selected_rom_index >= self.scroll_offset + self.max_visible_games {
-                        self.scroll_offset = self.selected_rom_index + 1 - self.max_visible_games;
+            MenuState::ROMSelection(tab) => {
+                let max_index = self.rom_catalog.len().saturating_sub(1);
+                match tab {
+                    ROMTab::GameRoms(idx) => {
+                        if *idx < max_index {
+                            *idx += 1;
+                            if *idx >= self.scroll_offset + self.max_visible_games {
+                                self.scroll_offset = *idx + 1 - self.max_visible_games;
+                            }
+                        }
                     }
-                }
+                    ROMTab::TestRoms(idx) => {
+                        if *idx < max_index {
+                            *idx += 1;
+                            if *idx >= self.scroll_offset + self.max_visible_games {
+                                self.scroll_offset = *idx + 1 - self.max_visible_games;
+                                }
+                            }
+                        }
+
+                    }
             }
-            MenuState::PaletteSelection => {
-                if self.selected_palette_index < self.available_palettes.len().saturating_sub(1) {
-                    self.selected_palette_index += 1;
+            MenuState::PaletteSelection(idx) => {
+                if *idx < self.available_palettes.len().saturating_sub(1) {
+                    *idx += 1;
                 }
             }
             _ => {}
@@ -112,8 +124,8 @@ impl Menu {
     }
 
     pub fn select(&mut self) -> Option<String> {
-        match self.current_state {
-            MenuState::MainMenu(menu_option) => {
+        match &self.current_state {
+            MenuState::MainMenu => {
                 match menu_option {
                     MainMenuOption::ROMs => {
                         // Start
@@ -131,10 +143,9 @@ impl Menu {
                         self.credits_scroll = 0.0;
                         None
                     }
-                    _ => None,
                 }
             }
-            MenuState::ROMSelection => {
+            MenuState::ROMSelection(_) => {
                 // Get filtered roms for current tab
                 let filtered_roms = self.get_tab_roms();
 
