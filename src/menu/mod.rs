@@ -42,11 +42,8 @@
 
 pub mod color_palette;
 pub mod menu;
-pub mod menu_renderer;
-pub mod rom_catalog;
+mod rom_catalog;
 
 // Re-export main types for easy access
-pub use menu_renderer::*;
-pub use rom_catalog::*;
-pub use menu::*;
 pub use color_palette::*;
+pub use menu::*;
