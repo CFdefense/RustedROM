@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::menu::ROMTab;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ROM {
     pub name: String,
@@ -40,7 +42,6 @@ impl ROM {
 pub struct ROMCatalog {
     pub game_roms: Vec<ROM>,
     pub test_roms: Vec<ROM>,
-    pub rom_dir: PathBuf,
 }
 
 impl ROMCatalog {
@@ -48,7 +49,6 @@ impl ROMCatalog {
         let mut catalog = ROMCatalog {
             game_roms: Vec::new(),
             test_roms: Vec::new(),
-            rom_dir: roms_dir.clone(),
         };
 
         // Collect games from the game roms dir
@@ -80,5 +80,26 @@ impl ROMCatalog {
 
     pub fn len(&self) -> usize {
         self.game_roms.len().wrapping_add(self.test_roms.len())
+    }
+
+    pub fn get_rom(&self, rom_type: &ROMTab) -> Option<&ROM> {
+        return match rom_type {
+            ROMTab::GameRoms(idx) => self.game_roms.get(*idx),
+            ROMTab::TestRoms(idx) => self.test_roms.get(*idx),
+        };
+    }
+
+    pub fn get_roms_idx(&self, rom: &ROM) -> Option<usize> {
+        // Look for the rom in the game roms
+        if let Some(idx) = self.game_roms.iter().position(|r| r == rom) {
+            return Some(idx);
+        }
+
+        // Look for the rom in the test roms
+        if let Some(idx) = self.test_roms.iter().position(|r| r == rom) {
+            return Some(idx);
+        }
+
+        None
     }
 }

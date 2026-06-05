@@ -44,7 +44,7 @@ mod hdw;
 mod menu;
 
 use hdw::ui::UI;
-use menu::{Menu, MenuRenderer, MenuState};
+use menu::{Menu, MenuState};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -61,7 +61,12 @@ fn main() -> Result<(), String> {
     }
 
     // Initialize menu system
-    let menu: Menu = Menu::new(PathBuf::from("roms"), debug);
+    let mut menu: Menu = Menu::new(
+        PathBuf::from("roms"),
+        hdw::ui::SCREEN_WIDTH,
+        hdw::ui::SCREEN_HEIGHT,
+        debug,
+    );
 
     // Initialize UI for menu
     let mut ui = UI::new(debug)?; // Pass debug flag to enable debug window for menu
@@ -75,9 +80,6 @@ fn main() -> Result<(), String> {
 
         // Update menu context
         menu.update(delta_time);
-
-        // Handle menu events
-        let mut continue_running = true;
 
         // match keybaord events to changes in menu
         for event in ui.event_pump.poll_iter() {
@@ -102,12 +104,8 @@ fn main() -> Result<(), String> {
             }
         }
 
-        if !continue_running {
-            break;
-        }
-
         // based on final current state -> render menu or ROM
-        match menu.current_state {
+        match &menu.current_state {
             MenuState::ROMOpen(rom) => {
                 // Launch ROM if requested
                 println!("Launching ROM: {}", rom.path);
@@ -125,12 +123,7 @@ fn main() -> Result<(), String> {
             }
             _ => {
                 // If not in game -> render menu
-                MenuRenderer::render_menu(
-                    &mut ui.screen_surface,
-                    &menu,
-                    hdw::ui::SCREEN_WIDTH,
-                    hdw::ui::SCREEN_HEIGHT,
-                );
+                menu.render(&mut ui.screen_surface);
 
                 // Create texture and render to main window
                 let main_texture = ui

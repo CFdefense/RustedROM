@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use sdl2::pixels::Color;
-use sdl2::surface::Surface;
 use sdl2::rect::Rect;
+use sdl2::surface::Surface;
 
 use super::color_palette::ColorPalette;
 use super::rom_catalog::{ROMCatalog, ROM};
@@ -194,18 +194,22 @@ impl Menu {
     }
 
     pub fn back(&mut self) {
-        match self.current_state {
+        match &self.current_state {
             MenuState::Credits(_) => {
                 self.current_state = MenuState::MainMenu(0);
             }
             MenuState::ROMSelection(_) => {
                 self.current_state = MenuState::MainMenu(0);
             }
-            MenuState::PaletteSelection(0) => {
+            MenuState::PaletteSelection(_) => {
                 self.current_state = MenuState::MainMenu(0);
             }
-            MenuState::ROMOpen(_) => {
-                self.current_state = MenuState::ROMSelection(ROMTab::GameRoms(0));
+            MenuState::ROMOpen(rom) => {
+                // Safe to unwrap here because we will find the ROM as it was just opened and as
+                // such exists in our rom catalog
+                self.current_state = MenuState::ROMSelection(ROMTab::GameRoms(
+                    self.rom_catalog.get_roms_idx(&rom).unwrap(),
+                ));
             }
             _ => {}
         }
@@ -229,6 +233,39 @@ impl Menu {
             .take(self.max_visible_roms)
             .collect()
     }
+    pub fn get_selected_rom_tab(&self) -> Option<&ROMTab> {
+        // Get the currently selected tab
+        return match &self.current_state {
+            MenuState::ROMSelection(tab) => Some(tab),
+            _ => return None, // Wrong MenuState
+        };
+    }
+
+    pub fn get_selected_rom_idx(&self) -> Option<&usize> {
+        // Get the currently selected tab
+        let current_tab = self.get_selected_rom_tab()?;
+
+        // Get the currently selected index of the tab
+        return match current_tab {
+            ROMTab::GameRoms(game_index) => Some(game_index),
+            ROMTab::TestRoms(test_index) => Some(test_index),
+        };
+    }
+
+    pub fn get_selected_rom(&self) -> Option<&ROM> {
+        // Get the currently selected tab
+        let current_tab = self.get_selected_rom_tab()?;
+
+        // Lookup the ROM
+        self.rom_catalog.get_rom(current_tab)
+    }
+
+    pub fn get_selected_palette_idx(&self) -> Option<usize> {
+        match self.current_state {
+            MenuState::PaletteSelection(idx) => Some(idx),
+            _ => None,
+        }
+    }
 
     pub fn render(&mut self, surface: &mut Surface) {
         // Clear background
@@ -240,7 +277,7 @@ impl Menu {
             MenuState::Credits(_) => self.render_credits(surface),
             MenuState::ROMSelection(_) => self.render_game_selection(surface),
             MenuState::PaletteSelection(_) => self.render_palette_selection(surface),
-            MenuState::ROMOpen(_) =>  return, // ROM Open -> Menu shouldnt be rendered
+            MenuState::ROMOpen(_) => return, // ROM Open -> Menu shouldnt be rendered
         }
     }
 
@@ -261,7 +298,7 @@ impl Menu {
             2,
         );
 
-        // Get the currently hovered menu option 
+        // Get the currently hovered menu option
         let selected_index = match self.current_state {
             MenuState::MainMenu(idx) => idx,
             _ => return,
@@ -315,7 +352,7 @@ impl Menu {
                 3,
             );
         } else if selected_index == 2 {
-           self.draw_text_centered(
+            self.draw_text_centered(
                 surface,
                 ">",
                 center_x - arrow_offset,
@@ -326,20 +363,19 @@ impl Menu {
         }
 
         // Show current palette selection
-        let current_palette_text =
-                format!("Current: {}", self.current_palette.get_name());
-            self.draw_text_centered(
-                surface,
-                &current_palette_text,
-                center_x,
-                credits_y + 60,
-                Self::SECONDARY_COLOR,
-                1,
-            );
+        let current_palette_text = format!("Current: {}", self.current_palette.get_name());
+        self.draw_text_centered(
+            surface,
+            &current_palette_text,
+            center_x,
+            credits_y + 60,
+            Self::SECONDARY_COLOR,
+            1,
+        );
 
-            // Draw controls hint at bottom - centered
-            self.draw_text_centered(
-                surface,
+        // Draw controls hint at bottom - centered
+        self.draw_text_centered(
+            surface,
             "Arrow Keys: Navigate  |  Enter: Select",
             center_x,
             self.screen_height as i32 - 30,
@@ -496,10 +532,8 @@ impl Menu {
         let tab_height = 25;
 
         // Set the tab color
-        let selected_tab = match self.current_state {
-            MenuState::ROMSelection(tab) => tab,
-            _ => return,
-        };
+        // Can safely unwrap as we will always be in a ROMSelection MenuState when this is called
+        let selected_tab = self.get_selected_rom_tab().unwrap();
 
         // Games tab
         let games_tab_color = if matches!(selected_tab, ROMTab::GameRoms(_)) {
@@ -550,11 +584,11 @@ impl Menu {
             2,
         );
 
-        // Draw game list on the left
-        self.render_game_list(surface, split_x);
+        // Draw rom list on the left
+        self.render_rom_list(surface, split_x);
 
-        // Draw game info on the right
-        self.render_game_info(surface, split_x);
+        // Draw rom info on the right
+        self.render_rom_info(surface, split_x);
 
         // Draw controls with tab switching instruction
         let controls = "UP/DOWN: Navigate | LEFT/RIGHT: Switch List | ENTER: Launch | BACKSPACE: Back | ESC: Exit";
@@ -568,22 +602,15 @@ impl Menu {
         );
     }
 
-    fn render_game_list(&self, surface: &mut Surface, split_x: u32) {
+    fn render_rom_list(&self, surface: &mut Surface, split_x: u32) {
         let list_x = 20;
         let start_y = 100; // Increased to make room for tabs
         let line_height = 25;
 
-        // Get the currently selected tab
-        let current_tab = match self.current_state {
-            MenuState::ROMSelection(tab) => tab,
-            _ => return,
-        };
-
-        // Get the currently selected index of the tab
-        let selected_rom_index= match current_tab {
-            ROMTab::GameRoms(game_index) => game_index,
-            ROMTab::TestRoms(test_index) => test_index,
-        };
+        // Get current ROM tab and index
+        // Can safely unwrap as this will only call on ROMSelection MenuState
+        let current_tab = self.get_selected_rom_tab().unwrap();
+        let selected_rom_idx = self.get_selected_rom_idx().unwrap();
 
         let visible_roms = self.get_visible_roms();
         let total_roms = match current_tab {
@@ -594,10 +621,10 @@ impl Menu {
         if visible_roms.is_empty() {
             let empty_message = match current_tab {
                 ROMTab::GameRoms(_) => {
-                    "No games found!\nPlace .gb/.gbc files in 'roms/game_roms/' directory"
+                    "No game ROMs found in 'roms/game_roms/'"
                 }
-                ROMTab::TestRoms(_)=> {
-                    "No test ROMs found!\nPlace test ROMs in 'roms/test_roms/' directory"
+                ROMTab::TestRoms(_) => {
+                    "No test ROMs found in 'roms/test_roms'"
                 }
             };
             self.draw_text(
@@ -614,7 +641,7 @@ impl Menu {
         // Draw the selection on the correct rom
         for (i, (filtered_index, rom)) in visible_roms.iter().enumerate() {
             let y = start_y + (i as i32 * line_height);
-            let is_selected = *filtered_index == selected_rom_index;
+            let is_selected = *filtered_index == *selected_rom_idx;
 
             // Draw selection highlight
             if is_selected {
@@ -667,11 +694,7 @@ impl Menu {
         }
     }
 
-    fn render_rom_info(
-        &self,
-        surface: &mut Surface,
-        split_x: u32,
-    ) {
+    fn render_rom_info(&self, surface: &mut Surface, split_x: u32) {
         let info_x = split_x as i32 + 20;
         let start_y = 80;
 
@@ -685,7 +708,7 @@ impl Menu {
             2,
         );
 
-        if let Some(rom) = self.get_selected_game() {
+        if let Some(rom) = self.get_selected_rom() {
             let mut y = start_y;
             let line_height = 25;
 
@@ -728,8 +751,7 @@ impl Menu {
             );
 
             // Try to find and display game image
-            let image_found =
-                self.try_render_game_image(surface, game, preview_rect, menu_context.debug);
+            let image_found = self.try_render_rom_image(surface, rom, preview_rect, self.debug);
 
             if !image_found {
                 // Only draw gray background if no image found
@@ -759,7 +781,7 @@ impl Menu {
         } else {
             self.draw_text(
                 surface,
-                "No game selected",
+                "No ROM selected",
                 info_x,
                 start_y + 50,
                 Self::CREDITS_COLOR,
@@ -768,7 +790,7 @@ impl Menu {
         }
     }
 
-    fn clean_name_for_image(name: &str) -> String {
+    fn clean_name_for_image(&self, name: &str) -> String {
         // Clean the game name to match potential image filenames
         name.chars()
             .map(|c| match c {
@@ -780,9 +802,10 @@ impl Menu {
             .to_string()
     }
 
-    fn try_render_game_image(
+    fn try_render_rom_image(
+        &self,
         surface: &mut Surface,
-        game: &GameInfo,
+        rom: &ROM,
         rect: Rect,
         debug: bool,
     ) -> bool {
@@ -791,29 +814,29 @@ impl Menu {
         use std::path::Path;
 
         // Extract filename from path without extension
-        let path = Path::new(&game.path);
+        let path = Path::new(&rom.path);
         let file_stem = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(&game.name);
+            .unwrap_or(&rom.name);
 
         // Look for images with common extensions
         let extensions = ["png", "jpg", "jpeg", "bmp", "gif"];
 
         if debug {
-            println!("Image Debug: Looking for images for game '{}'", game.name);
+            println!("Image Debug: Looking for images for ROM: '{}'", rom.name);
             println!("Image Debug: File stem: '{}'", file_stem);
         }
 
         // Try both original name, cleaned name, and file stem
-        let game_name_clean = self.clean_name_for_image(&game.name);
+        let rom_name_clean = self.clean_name_for_image(&rom.name);
         let file_stem_clean = self.clean_name_for_image(file_stem);
-        let names_to_try = vec![&game.name, &game_name_clean, file_stem, &file_stem_clean];
+        let names_to_try = vec![&rom.name, &rom_name_clean, file_stem, &file_stem_clean];
 
         if debug {
             println!(
                 "Image Debug: Original name: '{}', Cleaned name: '{}'",
-                game.name, game_name_clean
+                rom.name, rom_name_clean
             );
             println!(
                 "Image Debug: File stem: '{}', Cleaned stem: '{}'",
@@ -910,7 +933,10 @@ impl Menu {
 
                             if matches {
                                 if debug {
-                                    println!("Image Debug: Case-insensitive match found: {} matches game", stem_str);
+                                    println!(
+                                        "Image Debug: Case-insensitive match found: {} matches ROM",
+                                        stem_str
+                                    );
                                 }
 
                                 let image_path = format!("roms/imgs/{}", file_name);
@@ -973,7 +999,7 @@ impl Menu {
         }
 
         if debug {
-            println!("Image Debug: No image found for game '{}'", game.name);
+            println!("Image Debug: No image found for ROM: '{}'", rom.name);
         }
 
         false
@@ -1035,7 +1061,15 @@ impl Menu {
         self.draw_text(surface, text, x, y, color, scale);
     }
 
-    fn draw_text(&self, surface: &mut Surface, text: &str, x: i32, y: i32, color: Color, scale: u32) {
+    fn draw_text(
+        &self,
+        surface: &mut Surface,
+        text: &str,
+        x: i32,
+        y: i32,
+        color: Color,
+        scale: u32,
+    ) {
         let char_width = 7 * scale as i32; // Consistent character width
 
         for (i, ch) in text.chars().enumerate() {
@@ -1623,10 +1657,7 @@ impl Menu {
         }
     }
 
-    fn render_palette_selection(
-        &self,
-        surface: &mut Surface,
-    ) {
+    fn render_palette_selection(&self, surface: &mut Surface) {
         let center_x = self.screen_width as i32 / 2;
 
         // Draw title
@@ -1644,15 +1675,16 @@ impl Menu {
         let preview_size = 28; // Reduced from 40
         let preview_spacing = 3; // Reduced spacing between color boxes
 
-        for (i, palette) in menu_context.available_palettes.iter().enumerate() {
+        for (i, palette) in self.available_palettes.iter().enumerate() {
             let y = start_y + (i as i32 * line_height);
-            let is_selected = i == menu_context.selected_palette_index;
-            let is_current = palette == menu_context.get_current_palette();
+            let is_selected = i == self.get_selected_palette_idx().unwrap(); // Can unwrap() this
+                                                                             // should only be invoked in a PaletteSelection MenuState
+            let is_current = palette == &self.current_palette;
 
             // Draw selection highlight with reduced width
             if is_selected {
                 let highlight_rect =
-                    Rect::new(10, y - 3, screen_width - 20, line_height as u32 - 6);
+                    Rect::new(10, y - 3, self.screen_width - 20, line_height as u32 - 6);
                 surface
                     .fill_rect(highlight_rect, Color::RGBA(100, 200, 255, 30))
                     .unwrap();
@@ -1695,7 +1727,7 @@ impl Menu {
             // Draw color preview boxes - positioned on the right side
             let colors = palette.get_colors();
             let total_preview_width = (preview_size + preview_spacing) * 4 - preview_spacing;
-            let box_start_x = screen_width as i32 - total_preview_width - 15; // 15px margin from right
+            let box_start_x = self.screen_width as i32 - total_preview_width - 15; // 15px margin from right
 
             for (j, &color) in colors.iter().enumerate() {
                 let box_x = box_start_x + (j as i32 * (preview_size + preview_spacing));
@@ -1720,7 +1752,7 @@ impl Menu {
         }
 
         // Draw instructions
-        let instructions_y = screen_height as i32 - 45;
+        let instructions_y = self.screen_height as i32 - 45;
         self.draw_text_centered(
             surface,
             "UP/DOWN: NAVIGATE | ENTER: SELECT | BACKSPACE: BACK",
@@ -1731,7 +1763,7 @@ impl Menu {
         );
     }
 
-    fn draw_rect_border(surface: &mut Surface, rect: Rect, color: Color) {
+    fn draw_rect_border(&self, surface: &mut Surface, rect: Rect, color: Color) {
         // Draw border lines manually since SDL2 doesn't have a direct border function
         // Top line
         surface

@@ -1063,7 +1063,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
             HLTarget::B => match source {
                 // [0x40]
                 HLTarget::B => {
-                    cpu.registers.b = cpu.registers.b;
+                    // LD B,B (no-op)
                 }
                 // [0x41]
                 HLTarget::C => {
@@ -1102,7 +1102,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x49]
                 HLTarget::C => {
-                    cpu.registers.c = cpu.registers.c;
+                    // LD C,C (no-op)
                 }
                 // [0x4A]
                 HLTarget::D => {
@@ -1141,7 +1141,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x52]
                 HLTarget::D => {
-                    cpu.registers.d = cpu.registers.d;
+                    // LD D,D (no-op)
                 }
                 // [0x53]
                 HLTarget::E => {
@@ -1180,7 +1180,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x5B]
                 HLTarget::E => {
-                    cpu.registers.e = cpu.registers.e;
+                    // LD E,E (no-op)
                 }
                 // [0x5C]
                 HLTarget::H => {
@@ -1219,7 +1219,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x64]
                 HLTarget::H => {
-                    cpu.registers.h = cpu.registers.h;
+                    // LD H,H (no-op)
                 }
                 // [0x65]
                 HLTarget::L => {
@@ -1258,7 +1258,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x6D]
                 HLTarget::L => {
-                    cpu.registers.l = cpu.registers.l;
+                    // LD L,L (no-op)
                 }
                 // [0x6E]
                 HLTarget::HL => {
@@ -1336,7 +1336,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x7F]
                 HLTarget::A => {
-                    cpu.registers.a = cpu.registers.a;
+                    // LD A,A (no-op)
                 }
             },
         },
