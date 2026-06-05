@@ -28,7 +28,7 @@ pub struct Menu {
     pub current_palette: ColorPalette,
     pub available_palettes: Vec<ColorPalette>,
     pub scroll_offset: usize,
-    pub max_visible_games: usize,
+    pub max_visible_roms: usize,
     pub animation_time: f32,
     pub debug: bool,
     pub screen_width: u32,
@@ -51,7 +51,7 @@ impl Menu {
             current_palette: ColorPalette::ClassicGameBoy,
             available_palettes: ColorPalette::all_palettes(),
             scroll_offset: 0,
-            max_visible_games: 12,
+            max_visible_roms: 12,
             animation_time: 0.0,
             screen_width,
             screen_height,
@@ -110,16 +110,16 @@ impl Menu {
                     ROMTab::GameRoms(idx) => {
                         if *idx < max_index {
                             *idx += 1;
-                            if *idx >= self.scroll_offset + self.max_visible_games {
-                                self.scroll_offset = *idx + 1 - self.max_visible_games;
+                            if *idx >= self.scroll_offset + self.max_visible_roms {
+                                self.scroll_offset = *idx + 1 - self.max_visible_roms;
                             }
                         }
                     }
                     ROMTab::TestRoms(idx) => {
                         if *idx < max_index {
                             *idx += 1;
-                            if *idx >= self.scroll_offset + self.max_visible_games {
-                                self.scroll_offset = *idx + 1 - self.max_visible_games;
+                            if *idx >= self.scroll_offset + self.max_visible_roms {
+                                self.scroll_offset = *idx + 1 - self.max_visible_roms;
                             }
                         }
                     }
@@ -226,7 +226,7 @@ impl Menu {
             .into_iter()
             .enumerate()
             .skip(self.scroll_offset)
-            .take(self.max_visible_games)
+            .take(self.max_visible_roms)
             .collect()
     }
 
@@ -267,22 +267,24 @@ impl Menu {
             _ => return,
         };
 
-        if let start_color = selected_index == 0 {
+        // If something is selected lets highlight it
+        let start_color = if selected_index == 0 {
             Self::SELECTED_COLOR
         } else {
             Self::PRIMARY_COLOR
         };
-        if let palette_color = selected_index == 1 {
+        let palette_color = if selected_index == 1 {
             Self::SELECTED_COLOR
         } else {
             Self::PRIMARY_COLOR
         };
-        if let credits_color = selected_index == 2 {
+        let credits_color = if selected_index == 2 {
             Self::SELECTED_COLOR
         } else {
             Self::PRIMARY_COLOR
         };
 
+        // Place each text element in a nice centered column
         let start_y = center_y + 40;
         let palette_y = center_y + 80;
         let credits_y = center_y + 120;
@@ -294,7 +296,7 @@ impl Menu {
 
         // Draw selection arrow separately to the left of selected option
         let arrow_offset = 100; // Increased distance from center to place arrow (more space)
-        selected_index == 0 {
+        if selected_index == 0 {
             self.draw_text_centered(
                 surface,
                 ">",
@@ -303,7 +305,7 @@ impl Menu {
                 Self::SELECTED_COLOR,
                 3,
             );
-        } else selected_index == 1 {
+        } else if selected_index == 1 {
             self.draw_text_centered(
                 surface,
                 ">",
@@ -312,7 +314,7 @@ impl Menu {
                 Self::SELECTED_COLOR,
                 3,
             );
-        } else selected_index == 2 {
+        } else if selected_index == 2 {
            self.draw_text_centered(
                 surface,
                 ">",
@@ -325,19 +327,19 @@ impl Menu {
 
         // Show current palette selection
         let current_palette_text =
-            format!("Current: {}", menu_context.get_current_palette().get_name());
-        self.draw_text_centered(
-            surface,
-            &current_palette_text,
-            center_x,
-            credits_y + 60,
-            Self::SECONDARY_COLOR,
-            1,
-        );
+                format!("Current: {}", self.current_palette.get_name());
+            self.draw_text_centered(
+                surface,
+                &current_palette_text,
+                center_x,
+                credits_y + 60,
+                Self::SECONDARY_COLOR,
+                1,
+            );
 
-        // Draw controls hint at bottom - centered
-        self.draw_text_centered(
-            surface,
+            // Draw controls hint at bottom - centered
+            self.draw_text_centered(
+                surface,
             "Arrow Keys: Navigate  |  Enter: Select",
             center_x,
             self.screen_height as i32 - 30,
@@ -472,13 +474,13 @@ impl Menu {
 
     fn render_game_selection(&self, surface: &mut Surface) {
         // Split screen: left side for game list, right side for game info
-        let split_x = screen_width * 3 / 5; // 60% for game list, 40% for info
+        let split_x = self.screen_width * 3 / 5; // 60% for game list, 40% for info
 
         // Draw title with better positioning
         self.draw_text_centered(
             surface,
             "Select Game",
-            screen_width as i32 / 2,
+            self.screen_width as i32 / 2,
             25,
             Self::PRIMARY_COLOR,
             3,
@@ -493,8 +495,14 @@ impl Menu {
         let tab_width = 140;
         let tab_height = 25;
 
+        // Set the tab color
+        let selected_tab = match self.current_state {
+            MenuState::ROMSelection(tab) => tab,
+            _ => return,
+        };
+
         // Games tab
-        let games_tab_color = if menu_context.current_tab == crate::menu::GameTab::Games {
+        let games_tab_color = if matches!(selected_tab, ROMTab::GameRoms(_)) {
             Self::SELECTED_COLOR
         } else {
             Self::SECONDARY_COLOR
@@ -516,7 +524,7 @@ impl Menu {
         );
 
         // Test ROMs tab
-        let test_roms_tab_color = if menu_context.current_tab == crate::menu::GameTab::TestRoms {
+        let test_roms_tab_color = if matches!(selected_tab, ROMTab::TestRoms(_)) {
             Self::SELECTED_COLOR
         } else {
             Self::SECONDARY_COLOR
@@ -543,18 +551,18 @@ impl Menu {
         );
 
         // Draw game list on the left
-        self.render_game_list(surface, menu_context, split_x);
+        self.render_game_list(surface, split_x);
 
         // Draw game info on the right
-        self.render_game_info(surface, menu_context, split_x, screen_width, screen_height);
+        self.render_game_info(surface, split_x);
 
         // Draw controls with tab switching instruction
         let controls = "UP/DOWN: Navigate | LEFT/RIGHT: Switch List | ENTER: Launch | BACKSPACE: Back | ESC: Exit";
         self.draw_text_centered(
             surface,
             controls,
-            screen_width as i32 / 2,
-            screen_height as i32 - 15,
+            self.screen_width as i32 / 2,
+            self.screen_height as i32 - 15,
             Self::SECONDARY_COLOR,
             1,
         );
@@ -565,15 +573,30 @@ impl Menu {
         let start_y = 100; // Increased to make room for tabs
         let line_height = 25;
 
-        let visible_games = menu_context.get_visible_games();
-        let total_games = menu_context.get_filtered_games_count();
+        // Get the currently selected tab
+        let current_tab = match self.current_state {
+            MenuState::ROMSelection(tab) => tab,
+            _ => return,
+        };
 
-        if visible_games.is_empty() {
-            let empty_message = match menu_context.current_tab {
-                crate::menu::GameTab::Games => {
+        // Get the currently selected index of the tab
+        let selected_rom_index= match current_tab {
+            ROMTab::GameRoms(game_index) => game_index,
+            ROMTab::TestRoms(test_index) => test_index,
+        };
+
+        let visible_roms = self.get_visible_roms();
+        let total_roms = match current_tab {
+            ROMTab::GameRoms(_) => self.rom_catalog.game_roms.len(),
+            ROMTab::TestRoms(_) => self.rom_catalog.test_roms.len(),
+        };
+
+        if visible_roms.is_empty() {
+            let empty_message = match current_tab {
+                ROMTab::GameRoms(_) => {
                     "No games found!\nPlace .gb/.gbc files in 'roms/game_roms/' directory"
                 }
-                crate::menu::GameTab::TestRoms => {
+                ROMTab::TestRoms(_)=> {
                     "No test ROMs found!\nPlace test ROMs in 'roms/test_roms/' directory"
                 }
             };
@@ -588,9 +611,10 @@ impl Menu {
             return;
         }
 
-        for (i, (filtered_index, game)) in visible_games.iter().enumerate() {
+        // Draw the selection on the correct rom
+        for (i, (filtered_index, rom)) in visible_roms.iter().enumerate() {
             let y = start_y + (i as i32 * line_height);
-            let is_selected = *filtered_index == menu_context.selected_game_index;
+            let is_selected = *filtered_index == selected_rom_index;
 
             // Draw selection highlight
             if is_selected {
@@ -610,31 +634,31 @@ impl Menu {
             };
             self.draw_text(surface, arrow, list_x, y, arrow_color, 2);
 
-            // Draw game name
+            // Draw rom name
             let name_color = if is_selected {
                 Self::SELECTED_COLOR
             } else {
                 Self::PRIMARY_COLOR
             };
-            self.draw_text(surface, &game.name, list_x + 20, y, name_color, 2);
+            self.draw_text(surface, &rom.name, list_x + 20, y, name_color, 2);
         }
 
         // Draw scroll indicators if needed
-        if menu_context.scroll_offset > 0 {
+        if self.scroll_offset > 0 {
             self.draw_text_centered(
                 surface,
-                "^ More games above",
+                "^ More ROMs above",
                 split_x as i32 / 2,
                 start_y - 5,
                 Self::SECONDARY_COLOR,
                 1,
             );
         }
-        if menu_context.scroll_offset + menu_context.max_visible_games < total_games {
-            let bottom_y = start_y + (menu_context.max_visible_games as i32 * line_height) + 5;
+        if self.scroll_offset + self.max_visible_roms < total_roms {
+            let bottom_y = start_y + (self.max_visible_roms as i32 * line_height) + 5;
             self.draw_text_centered(
                 surface,
-                "v More games below",
+                "v More ROMs below",
                 split_x as i32 / 2,
                 bottom_y,
                 Self::SECONDARY_COLOR,
@@ -643,7 +667,7 @@ impl Menu {
         }
     }
 
-    fn render_game_info(
+    fn render_rom_info(
         &self,
         surface: &mut Surface,
         split_x: u32,
@@ -651,26 +675,26 @@ impl Menu {
         let info_x = split_x as i32 + 20;
         let start_y = 80;
 
-        // Draw "Game Info" header
+        // Draw "ROM Info" header
         self.draw_text(
             surface,
-            "Game Info:",
+            "ROM Info:",
             info_x,
             start_y - 30,
             Self::SECONDARY_COLOR,
             2,
         );
 
-        if let Some(game) = menu_context.get_selected_game() {
+        if let Some(rom) = self.get_selected_game() {
             let mut y = start_y;
             let line_height = 25;
 
-            // Game title
-            self.draw_text(surface, &game.name, info_x, y, Self::PRIMARY_COLOR, 2);
+            // ROM title
+            self.draw_text(surface, &rom.name, info_x, y, Self::PRIMARY_COLOR, 2);
             y += line_height * 2;
 
             // File info
-            let size_mb = game.file_size as f64 / 1024.0 / 1024.0;
+            let size_mb = rom.file_size as f64 / 1024.0 / 1024.0;
             self.draw_text(
                 surface,
                 &format!("Size: {:.1} MB", size_mb),
@@ -682,12 +706,12 @@ impl Menu {
             y += line_height;
 
             // Battery backup status
-            let battery_text = if game.is_battery_backed {
+            let battery_text = if rom.is_battery_backed {
                 "Save Support: Yes"
             } else {
                 "Save Support: No"
             };
-            let battery_color = if game.is_battery_backed {
+            let battery_color = if rom.is_battery_backed {
                 Self::BATTERY_COLOR
             } else {
                 Self::CREDITS_COLOR
@@ -695,12 +719,12 @@ impl Menu {
             self.draw_text(surface, battery_text, info_x, y, battery_color, 1);
             y += line_height * 2;
 
-            // Game preview area
+            // ROM preview area
             let preview_rect = Rect::new(
                 info_x,
                 y,
-                (screen_width - split_x - 40) as u32,
-                (screen_height - y as u32 - 100).min(200),
+                (self.screen_width - split_x - 40) as u32,
+                (self.screen_height - y as u32 - 100).min(200),
             );
 
             // Try to find and display game image
@@ -1011,7 +1035,7 @@ impl Menu {
         self.draw_text(surface, text, x, y, color, scale);
     }
 
-    fn draw_text(surface: &mut Surface, text: &str, x: i32, y: i32, color: Color, scale: u32) {
+    fn draw_text(&self, surface: &mut Surface, text: &str, x: i32, y: i32, color: Color, scale: u32) {
         let char_width = 7 * scale as i32; // Consistent character width
 
         for (i, ch) in text.chars().enumerate() {
@@ -1020,7 +1044,7 @@ impl Menu {
         }
     }
 
-    fn draw_char(surface: &mut Surface, ch: char, x: i32, y: i32, color: Color, scale: u32) {
+    fn draw_char(&self, surface: &mut Surface, ch: char, x: i32, y: i32, color: Color, scale: u32) {
         // Character bitmap patterns (5x7 pixel patterns)
         let char_width = 6 * scale;
         let char_height = 8 * scale;
@@ -1603,7 +1627,7 @@ impl Menu {
         &self,
         surface: &mut Surface,
     ) {
-        let center_x = screen_width as i32 / 2;
+        let center_x = self.screen_width as i32 / 2;
 
         // Draw title
         self.draw_text_centered(
