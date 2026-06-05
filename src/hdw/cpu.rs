@@ -57,16 +57,16 @@
 
 use crate::hdw::bus::BUS;
 use crate::hdw::cpu_ops::*;
+use crate::hdw::debug_timer::log_timer_state;
 use crate::hdw::instructions::*;
 use crate::hdw::interrupts::*;
 use crate::hdw::registers::*;
-use crate::hdw::debug_timer::log_timer_state;
 use core::panic;
 
-use std::sync::{Arc, Mutex};
 use crate::hdw::emu::EmuContext;
+use std::sync::{Arc, Mutex};
 
-use super::cpu_util::{print_step_info, log_cpu_state};
+use super::cpu_util::{log_cpu_state, print_step_info};
 use super::debug;
 use super::emu::emu_cycles;
 
@@ -105,7 +105,7 @@ impl CPU {
                 l: 0x4D,
             },
             pc: 0x0100,
-            sp: 0xFFFE, 
+            sp: 0xFFFE,
             bus: new_bus,
 
             curr_opcode: 0,
@@ -120,22 +120,25 @@ impl CPU {
 
     // Function to 'step' through instructions
     pub fn step(&mut self, ctx: Arc<Mutex<EmuContext>>) -> bool {
-
         if !self.is_halted {
             self.fetch();
             self.decode();
-            
+
             if self.debug {
                 print_step_info(self, &ctx, self.log_ticks);
                 log_cpu_state(self, &ctx, self.log_ticks);
                 debug::dbg_update(&mut self.bus);
                 debug::dbg_print();
             }
-            
+
             let instruction_to_execute = self.curr_instruction.take();
 
             if let Some(instruction) = instruction_to_execute {
-                log_timer_state(self, &ctx, format!("Executing instruction: {:?}", instruction).as_str());
+                log_timer_state(
+                    self,
+                    &ctx,
+                    format!("Executing instruction: {:?}", instruction).as_str(),
+                );
                 self.execute(instruction); // Execute might modify PC and flags
                 if self.log_ticks && self.debug {
                     let ticks = ctx.lock().unwrap().ticks;
@@ -143,15 +146,18 @@ impl CPU {
                     if let Ok(mut file) = std::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
-                        .open("cpu_log.txt") {
-                        let _ = std::io::Write::write_all(&mut file, format!(" {:08X}\n", ticks).as_bytes());
+                        .open("cpu_log.txt")
+                    {
+                        let _ = std::io::Write::write_all(
+                            &mut file,
+                            format!(" {:08X}\n", ticks).as_bytes(),
+                        );
                     }
                 }
             } else {
                 panic!("Decode Error: No Instruction")
             }
-
-        } else {    
+        } else {
             // is halted
             emu_cycles(self, 1);
 
@@ -172,7 +178,7 @@ impl CPU {
         if self.bus.interrupt_controller.step_ime() {
             log_timer_state(self, &ctx, "IME enabled");
         }
-        
+
         true
     }
 
@@ -185,8 +191,7 @@ impl CPU {
     // Function to decode current opcode
     fn decode(&mut self) {
         // Try to decode curr opcode
-        self.curr_instruction =
-            Instruction::decode_from_opcode(self.curr_opcode, self.pc, self);
+        self.curr_instruction = Instruction::decode_from_opcode(self.curr_opcode, self.pc, self);
 
         // Error handling
         if self.curr_instruction.is_none() {
@@ -227,10 +232,10 @@ impl CPU {
                 self.pc = self.pc.wrapping_add(1);
             }
             Instruction::SCF => {
-                self.registers.f.carry = true;     // C = 1
+                self.registers.f.carry = true; // C = 1
                 self.registers.f.subtract = false; // N = 0
                 self.registers.f.half_carry = false; // H = 0
-                // Z flag is not affected
+                                                     // Z flag is not affected
                 self.pc = self.pc.wrapping_add(1);
             }
             Instruction::CPL => {
@@ -239,9 +244,9 @@ impl CPU {
             }
             Instruction::CCF => {
                 self.registers.f.carry = !self.registers.f.carry; // C = !C
-                self.registers.f.subtract = false;             // N = 0
-                self.registers.f.half_carry = false;             // H = 0
-                // Z flag is not affected
+                self.registers.f.subtract = false; // N = 0
+                self.registers.f.half_carry = false; // H = 0
+                                                     // Z flag is not affected
                 self.pc = self.pc.wrapping_add(1);
             }
             Instruction::JR(target) => {
@@ -262,10 +267,13 @@ impl CPU {
             }
             Instruction::HALT => {
                 self.is_halted = true;
-                self.pc = self.pc.wrapping_add(1);  // Increment PC after HALT
-                
+                self.pc = self.pc.wrapping_add(1); // Increment PC after HALT
+
                 // If there's a pending interrupt, exit HALT state immediately
-                if (self.bus.interrupt_controller.get_int_flags() & self.bus.interrupt_controller.get_ie_register()) != 0 {
+                if (self.bus.interrupt_controller.get_int_flags()
+                    & self.bus.interrupt_controller.get_ie_register())
+                    != 0
+                {
                     self.is_halted = false;
                 }
             }
@@ -341,7 +349,7 @@ impl CPU {
             Instruction::EI => {
                 // EI enables interrupts AFTER the instruction FOLLOWING EI.
                 // So, we set a flag to enable IME on the next cycle.
-                self.bus.interrupt_controller.set_enabling_ime(true); 
+                self.bus.interrupt_controller.set_enabling_ime(true);
                 self.pc = self.pc.wrapping_add(1);
             }
 
@@ -392,7 +400,7 @@ impl CPU {
             }
         }
     }
-    
+
     pub fn cpu_request_interrupt(&mut self, interrupt: Interrupts) {
         self.bus.interrupt_controller.request_interrupt(interrupt);
     }

@@ -1,40 +1,40 @@
 /**
  * PPU Pipeline Module - Game Boy Pixel FIFO Implementation
- * 
+ *
  * This module implements the Game Boy's pixel pipeline using a First-In-First-Out (FIFO)
  * buffer system that accurately replicates the original hardware's pixel processing.
  * The pipeline fetches tile data, processes background/window/sprite pixels, and outputs
  * the final color values that get displayed on screen.
- * 
+ *
  * Pipeline Stages:
  * 1. TILE: Fetch tile number from background/window map
  * 2. DATA0: Fetch low bit plane of tile data  
  * 3. DATA1: Fetch high bit plane of tile data
  * 4. IDLE: Wait state for timing accuracy
  * 5. PUSH: Push 8 pixels into FIFO for rendering
- * 
+ *
  * FIFO Operation:
  * The pixel FIFO maintains a queue of up to 16 pixels, with new pixels pushed
  * from the back and rendered pixels popped from the front. This creates the
  * authentic timing behavior needed for proper scrolling and sprite mixing.
- * 
+ *
  * Background/Window Processing:
  * - Fetches 8x8 tile data from VRAM based on tile maps
  * - Handles both 8000-8FFF and 8800-97FF tile data addressing modes
  * - Supports horizontal and vertical scrolling through SCX/SCY registers
  * - Window layer can override background tiles based on WX/WY positioning
- * 
+ *
  * Sprite Integration:
  * - Up to 3 sprites can be processed simultaneously during pixel fetch
  * - Sprite pixels are mixed with background pixels based on priority flags
  * - Supports both 8x8 and 8x16 sprite modes with proper clipping
- * 
+ *
  * The pipeline ensures cycle-accurate pixel output timing for proper game compatibility.
  */
 
 /**
  * FIFOState - Pixel Pipeline State Machine
- * 
+ *
  * Represents the current stage of the pixel fetching pipeline.
  * Each state corresponds to a specific operation in the tile data fetch process.
  */
@@ -53,7 +53,7 @@ pub enum FIFOState {
 
 /**
  * FIFO - First-In-First-Out Pixel Buffer
- * 
+ *
  * Maintains a queue of processed pixels waiting to be rendered.
  * Implements the Game Boy's authentic pixel timing behavior.
  */
@@ -75,11 +75,11 @@ impl FIFO {
 
 /**
  * PixelFIFO - Complete Pixel Processing Pipeline
- * 
+ *
  * Combines the FIFO buffer with all state needed for pixel processing.
  * Manages tile fetching, coordinate tracking, and pixel data storage
  * for both background/window and sprite rendering.
- * 
+ *
  * Coordinate System:
  * - line_x: Current X position being processed on scanline
  * - pushed_x: Number of pixels output to display buffer

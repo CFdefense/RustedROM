@@ -38,15 +38,15 @@
 */
 
 use std::env;
+use std::path::PathBuf;
 use std::time::Instant;
-
 mod hdw;
 mod menu;
 
 use hdw::ui::UI;
-use menu::{MenuContext, MenuState, GameScanner, MenuRenderer};
-use sdl2::keyboard::Keycode;
+use menu::{Menu, MenuState};
 use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 
 fn main() -> Result<(), String> {
     println!("RustedROM - Game Boy Emulator");
@@ -55,103 +55,86 @@ fn main() -> Result<(), String> {
     // Parse command line arguments for debug mode
     let args: Vec<String> = env::args().collect();
     let debug = args.contains(&"--debug".to_string());
-    
+
     if debug {
         println!("Debug mode enabled");
     }
 
     // Initialize menu system
-    let mut menu_context = MenuContext::new_with_debug(debug);
-    
-    // Scan for games
-    println!("Scanning for Game Boy ROMs...");
-    menu_context.games = GameScanner::scan_games("roms");
-    println!("Found {} games", menu_context.games.len());
+    let mut menu: Menu = Menu::new(
+        PathBuf::from("roms"),
+        hdw::ui::SCREEN_WIDTH,
+        hdw::ui::SCREEN_HEIGHT,
+        debug,
+    );
 
     // Initialize UI for menu
     let mut ui = UI::new(debug)?; // Pass debug flag to enable debug window for menu
     let mut last_time = Instant::now();
 
     // Main application loop
-    loop {
+    'app_loop: loop {
         let current_time = Instant::now();
         let delta_time = (current_time - last_time).as_secs_f32();
         last_time = current_time;
 
         // Update menu context
-        menu_context.update(delta_time);
+        menu.update(delta_time);
 
-        // Handle menu events
-        let mut continue_running = true;
-        let mut launch_game: Option<String> = None;
-
+        // match keybaord events to changes in menu
         for event in ui.event_pump.poll_iter() {
             match event {
-                Event::Quit {..} => {
-                    continue_running = false;
-                },
-                Event::KeyDown { keycode: Some(keycode), .. } => {
-                    match keycode {
-                        Keycode::Up => menu_context.navigate_up(),
-                        Keycode::Down => menu_context.navigate_down(),
-                        Keycode::Left | Keycode::Right => {
-                            if matches!(menu_context.current_state, MenuState::GameSelection) {
-                                menu_context.switch_tab();
-                            }
-                        },
-                        Keycode::Return => {
-                            if let Some(game_path) = menu_context.select() {
-                                launch_game = Some(game_path);
-                            }
-                        },
-                        Keycode::Backspace => menu_context.back(),
-                        Keycode::Escape => {
-                            if matches!(menu_context.current_state, MenuState::InGame(_)) {
-                                menu_context.exit_game();
-                            } else {
-                                continue_running = false;
-                            }
-                        },
-                        _ => {}
+                Event::Quit { .. } => break 'app_loop,
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    ..
+                } => match keycode {
+                    Keycode::Return => menu.select(),
+                    Keycode::Escape | Keycode::Backspace => menu.back(),
+                    Keycode::Up => menu.navigate_up(),
+                    Keycode::Down => menu.navigate_down(),
+                    Keycode::Left | Keycode::Right => {
+                        if matches!(menu.current_state, MenuState::ROMSelection(_)) {
+                            menu.navigate_horizontal();
+                        }
                     }
+                    _ => {}
                 },
                 _ => {}
             }
         }
 
-        if !continue_running {
-            break;
-        }
-
-        // Launch game if requested
-        if let Some(game_path) = launch_game {
-            println!("Launching game: {}", game_path);
-            let palette_colors = menu_context.get_current_palette().get_colors();
-            match launch_emulator(&game_path, &mut ui, menu_context.debug, Some(palette_colors)) {
-                Ok(_) => {
-                    println!("Game session ended, returning to menu");
-                    menu_context.exit_game();
-                },
-                Err(e) => {
-                    println!("Failed to launch game: {}", e);
-                    menu_context.exit_game();
+        // based on final current state -> render menu or ROM
+        match &menu.current_state {
+            MenuState::ROMOpen(rom) => {
+                // Launch ROM if requested
+                println!("Launching ROM: {}", rom.path);
+                let palette_colors = menu.current_palette.get_colors();
+                match launch_emulator(&rom.path, &mut ui, menu.debug, Some(palette_colors)) {
+                    Ok(_) => {
+                        println!("ROM session ended, returning to menu");
+                        menu.back()
+                    }
+                    Err(e) => {
+                        println!("Failed to launch game: {}", e);
+                        menu.back();
+                    }
                 }
             }
-        }
+            _ => {
+                // If not in game -> render menu
+                menu.render(&mut ui.screen_surface);
 
-        // Render menu (only if not in game)
-        if !matches!(menu_context.current_state, MenuState::InGame(_)) {
-            MenuRenderer::render_menu(&mut ui.screen_surface, &menu_context, 
-                                    hdw::ui::SCREEN_WIDTH, hdw::ui::SCREEN_HEIGHT);
-            
-            // Create texture and render to main window
-            let main_texture = ui.main_texture_creator
-                .create_texture_from_surface(&ui.screen_surface)
-                .expect("Failed to create main texture");
-            
-            ui.main_canvas.clear();
-            ui.main_canvas.copy(&main_texture, None, None).unwrap();
-            ui.main_canvas.present();
+                // Create texture and render to main window
+                let main_texture = ui
+                    .main_texture_creator
+                    .create_texture_from_surface(&ui.screen_surface)
+                    .expect("Failed to create main texture");
+
+                ui.main_canvas.clear();
+                ui.main_canvas.copy(&main_texture, None, None).unwrap();
+                ui.main_canvas.present();
+            }
         }
 
         // Small delay to prevent high CPU usage
@@ -162,7 +145,12 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-fn launch_emulator(rom_path: &str, ui: &mut UI, debug: bool, palette: Option<[u32; 4]>) -> Result<(), String> {
+fn launch_emulator(
+    rom_path: &str,
+    ui: &mut UI,
+    debug: bool,
+    palette: Option<[u32; 4]>,
+) -> Result<(), String> {
     println!("Starting Game Boy emulator for: {}", rom_path);
 
     // Use the new function that accepts an existing UI context
@@ -170,20 +158,4 @@ fn launch_emulator(rom_path: &str, ui: &mut UI, debug: bool, palette: Option<[u3
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Emulator error: {}", e)),
     }
-}
-
-// Keep the old functionality for direct ROM loading (backwards compatibility)
-#[allow(dead_code)]
-fn main_direct_rom() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() != 2 {
-        return Err("Usage: GameBoy <ROM_FILE>".to_string());
-    }
-
-    let rom_path = &args[1];
-    
-    // Create UI for direct ROM loading
-    let mut ui = UI::new(false)?;
-    launch_emulator(rom_path, &mut ui, false, None)
 }

@@ -1,48 +1,47 @@
 /**
  * CPU Utilities Module - Helper Functions for CPU Operations
- * 
+ *
  * This module provides essential utility functions that support CPU instruction
  * execution, including register access, flag management, conditional testing,
  * and program flow control. These utilities are used throughout the CPU
  * implementation to maintain consistent behavior and reduce code duplication.
- * 
+ *
  * Core Functionality:
- * 
+ *
  * Register Access:
  * - match_hl(): Maps HLTarget enums to actual register values
  * - match_n16(): Maps register pair enums to 16-bit values
- * 
+ *
  * Conditional Testing:
  * - match_jump(): Evaluates jump conditions based on CPU flags
  * - Supports Z/NZ (zero), C/NC (carry) condition codes
- * 
+ *
  * Flag Management:
  * Specialized flag update functions for different instruction types:
  * - Arithmetic: set_flags_after_add_a(), set_flags_after_sub()
  * - Logical: set_flags_after_and(), set_flags_after_xor_or()
  * - Bit operations: set_flags_after_bit(), set_flags_after_pref_op()
  * - Special: set_flags_after_daa(), set_flags_after_cpl()
- * 
+ *
  * Program Flow:
  * - goto_addr(): Handles jumps, calls, and returns with optional stack push
  * - Manages conditional execution and PC updates
- * 
+ *
  * Debug Support:
  * - print_step_info(): Outputs detailed CPU state information
  * - log_cpu_state(): File-based logging for debugging
  * - Conditional logging based on debug mode settings
- * 
+ *
  * Flag Update Algorithms:
  * Each flag setting function implements the precise Game Boy flag update rules:
  * - Zero flag: Set when result equals zero
  * - Subtract flag: Set for subtraction operations, cleared for addition
  * - Half carry: Set when carry/borrow occurs between bits 3 and 4
  * - Carry flag: Set when carry/borrow occurs from most significant bit
- * 
+ *
  * The utilities ensure consistent and accurate CPU behavior across all
  * instruction implementations while providing debugging capabilities.
  */
-
 /*
 
     Helper File to Contain Helper Utilization Functions For CPU Execute Operations
@@ -51,12 +50,12 @@
 use super::emu::emu_cycles;
 use super::stack::stack_push16;
 use crate::hdw::cpu::CPU;
+use crate::hdw::emu::EmuContext;
 use crate::hdw::instructions::*;
 use core::panic;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use crate::hdw::emu::EmuContext;
 
 // Method to match a N16 Target
 pub fn match_n16(cpu: &mut CPU, target: AddN16Target) -> u16 {
@@ -121,8 +120,10 @@ pub fn set_flags_after_adc(cpu: &mut CPU, result: u8, original_value: u8, immedi
     // [Z 0 H CY]
     cpu.registers.f.zero = result == 0;
     cpu.registers.f.subtract = false;
-    cpu.registers.f.half_carry = ((original_value & 0x0F) + (immediate_operand & 0x0F) + carry_in) > 0x0F;
-    cpu.registers.f.carry = ((original_value as u16) + (immediate_operand as u16) + (carry_in as u16)) > 0xFF;
+    cpu.registers.f.half_carry =
+        ((original_value & 0x0F) + (immediate_operand & 0x0F) + carry_in) > 0x0F;
+    cpu.registers.f.carry =
+        ((original_value as u16) + (immediate_operand as u16) + (carry_in as u16)) > 0xFF;
 }
 
 // SUB SBC FLAGS [0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xD6, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xDE]
@@ -158,7 +159,7 @@ pub fn set_flags_after_cp(cpu: &mut CPU, a: u8, b: u8) {
     cpu.registers.f.zero = a == b;
     cpu.registers.f.subtract = true; // N is always set for CP
     cpu.registers.f.half_carry = (a & 0x0F) < (b & 0x0F); // Set if borrow from bit 4
-    cpu.registers.f.carry = a < b;       // Set if borrow (A < value)
+    cpu.registers.f.carry = a < b; // Set if borrow (A < value)
 }
 
 /* BIT FLAGS
@@ -248,8 +249,8 @@ pub fn set_flags_after_add_n16(cpu: &mut CPU, operand1: u16, operand2: u16) {
 
 // LD SP FLAGS [0xF8]
 pub fn set_flags_after_ld_spe8(cpu: &mut CPU, original_sp: u16, r8_signed: i8) {
-    cpu.registers.f.zero = false;       // Z is always 0
-    cpu.registers.f.subtract = false;    // N is always 0
+    cpu.registers.f.zero = false; // Z is always 0
+    cpu.registers.f.subtract = false; // N is always 0
 
     let r8_unsigned = r8_signed as u8;
     let sp_low_byte = original_sp as u8;
@@ -265,7 +266,8 @@ pub fn set_flags_after_sbc(cpu: &mut CPU, result: u8, original_a: u8, operand: u
     cpu.registers.f.zero = result == 0;
     cpu.registers.f.subtract = true;
     // Half-carry: set if borrow from bit 4
-    cpu.registers.f.half_carry = ((original_a & 0x0F) as i16 - (operand & 0x0F) as i16 - carry_in as i16) < 0;
+    cpu.registers.f.half_carry =
+        ((original_a & 0x0F) as i16 - (operand & 0x0F) as i16 - carry_in as i16) < 0;
     // Carry: set if borrow from bit 8
     cpu.registers.f.carry = ((original_a as i16) - (operand as i16) - carry_in as i16) < 0;
 }
@@ -307,10 +309,17 @@ pub fn goto_addr(cpu: &mut CPU, address: u16, jump_test: JumpTest, push_pc: bool
 // Print the current execution step
 pub fn print_step_info(cpu: &mut CPU, ctx: &Arc<Mutex<EmuContext>>, log_ticks: bool) {
     let ticks = ctx.lock().unwrap().ticks;
-    
-    let instruction_name_display = cpu.curr_instruction.as_ref().map_or("None".to_string(), |instr| {
-        format!("{:?}", instr).split('(').next().unwrap_or("Unknown").to_string()
-    });
+
+    let instruction_name_display =
+        cpu.curr_instruction
+            .as_ref()
+            .map_or("None".to_string(), |instr| {
+                format!("{:?}", instr)
+                    .split('(')
+                    .next()
+                    .unwrap_or("Unknown")
+                    .to_string()
+            });
 
     if log_ticks {
         print!(
@@ -349,7 +358,7 @@ pub fn print_step_info(cpu: &mut CPU, ctx: &Arc<Mutex<EmuContext>>, log_ticks: b
         );
     }
     // Flush stdout to ensure the an_info appears immediately
-    let _ = std::io::stdout().flush(); 
+    let _ = std::io::stdout().flush();
 }
 
 // Log the current CPU state to cpu_log.txt
@@ -359,15 +368,22 @@ pub fn log_cpu_state(cpu: &mut CPU, ctx: &Arc<Mutex<EmuContext>>, log_ticks: boo
     let pcmem2 = cpu.bus.read_byte(None, cpu.pc.wrapping_add(2));
 
     let log_entry = if log_ticks {
-        let instruction_name_display = cpu.curr_instruction.as_ref().map_or("None".to_string(), |instr| {
-            format!("{:?}", instr).split('(').next().unwrap_or("Unknown").to_string()
-        });
+        let instruction_name_display =
+            cpu.curr_instruction
+                .as_ref()
+                .map_or("None".to_string(), |instr| {
+                    format!("{:?}", instr)
+                        .split('(')
+                        .next()
+                        .unwrap_or("Unknown")
+                        .to_string()
+                });
         format!(
             "{:08X} - {:04X}: {:<12}\t({:02X} {:02X} {:02X}) A:{:02X} F:{}{}{}{} BC:{:04X} DE:{:04X} HL:{:04X} IE:{:02X} IF:{:02X}",
             ticks,
             cpu.pc,
             instruction_name_display,
-            cpu.curr_opcode, 
+            cpu.curr_opcode,
             pcmem1,
             pcmem2,
             cpu.registers.a,

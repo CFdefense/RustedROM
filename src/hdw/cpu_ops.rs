@@ -1,58 +1,57 @@
 /**
  * CPU Operations Module - Game Boy CPU Instruction Implementations
- * 
+ *
  * This module contains the actual implementation of all Game Boy CPU instructions.
  * Each function corresponds to a specific instruction type and handles the detailed
  * execution logic, register updates, memory access, and flag modifications.
- * 
+ *
  * Instruction Categories Implemented:
- * 
+ *
  * Bit Operations (CB-prefixed):
  * - Shifts: SRL, SRA, SLA (logical/arithmetic shifts)
  * - Rotates: RLC, RRC, RL, RR (with and without carry)
  * - SWAP: Exchange upper and lower nibbles
  * - BIT: Test specific bit and set zero flag
  * - RES/SET: Reset or set specific bit in register
- * 
+ *
  * Arithmetic Operations:
  * - ADD/ADC: Addition with optional carry
  * - SUB/SBC: Subtraction with optional carry  
  * - INC/DEC: Increment/decrement 8-bit and 16-bit values
  * - DAA: Decimal adjust after BCD arithmetic
  * - CPL: Complement (invert) accumulator
- * 
+ *
  * Logical Operations:
  * - AND/OR/XOR: Bitwise logical operations
  * - CP: Compare (subtract without storing result)
- * 
+ *
  * Load Operations:
  * - LD: Comprehensive load instruction handling all addressing modes
  * - Supports register-to-register, immediate, and memory operations
- * 
+ *
  * Control Flow:
  * - JP/JR: Absolute and relative jumps with conditions
  * - CALL/RET: Subroutine calls and returns with stack management
  * - RST: Restart vectors for interrupt handling
- * 
+ *
  * Stack Operations:
  * - PUSH/POP: Stack manipulation for 16-bit register pairs
- * 
+ *
  * Flag Management:
  * All arithmetic and logical operations properly update the CPU flags register:
  * - Zero (Z): Set when result is zero
  * - Subtract (N): Set for subtraction operations  
  * - Half Carry (H): Set when carry occurs from bit 3 to bit 4
  * - Carry (C): Set when carry occurs from bit 7 or borrow occurs
- * 
+ *
  * The operations maintain cycle-accurate timing and authentic Game Boy behavior
  * for maximum compatibility with original software.
  */
-
 use crate::hdw::cpu::*;
 use crate::hdw::cpu_util::*;
+use crate::hdw::emu::*;
 use crate::hdw::instructions::*;
 use crate::hdw::stack::*;
-use crate::hdw::emu::*;
 // [0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F]
 pub fn op_srl(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
@@ -72,7 +71,7 @@ pub fn op_srl(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     // Update Flags
@@ -96,7 +95,7 @@ pub fn op_swap(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_swap(cpu, result);
@@ -122,7 +121,7 @@ pub fn op_sra(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, lsb, result);
@@ -146,7 +145,7 @@ pub fn op_sla(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, bit_7, result);
@@ -170,7 +169,7 @@ pub fn op_rlc(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, bit_7, result);
@@ -194,7 +193,7 @@ pub fn op_rrc(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, bit_0, result);
@@ -219,7 +218,7 @@ pub fn op_rl(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, new_carry_val, result);
@@ -244,7 +243,7 @@ pub fn op_rr(cpu: &mut CPU, target: HLTarget) {
         HLTarget::E => cpu.registers.e = result,
         HLTarget::H => cpu.registers.h = result,
         HLTarget::L => cpu.registers.l = result,
-        HLTarget::HL => cpu.bus.write_byte( cpu.registers.get_hl(), result),
+        HLTarget::HL => cpu.bus.write_byte(cpu.registers.get_hl(), result),
     }
 
     set_flags_after_pref_op(cpu, new_carry_val, result);
@@ -264,12 +263,13 @@ pub fn op_daa(cpu: &mut CPU) {
     let mut a_val = cpu.registers.a;
     let n_flag = cpu.registers.f.subtract; // N flag from previous operation
     let h_flag_old = cpu.registers.f.half_carry; // H flag from previous operation
-    let c_flag_old = cpu.registers.f.carry;   // C flag from previous operation
+    let c_flag_old = cpu.registers.f.carry; // C flag from previous operation
 
     let mut adjustment: u8 = 0x00;
     let mut set_new_carry_flag = false;
 
-    if !n_flag { // Previous operation was an addition
+    if !n_flag {
+        // Previous operation was an addition
         if c_flag_old || a_val > 0x99 {
             adjustment |= 0x60;
             set_new_carry_flag = true;
@@ -278,7 +278,8 @@ pub fn op_daa(cpu: &mut CPU) {
             adjustment |= 0x06;
         }
         a_val = a_val.wrapping_add(adjustment);
-    } else { // Previous operation was a subtraction
+    } else {
+        // Previous operation was a subtraction
         if c_flag_old {
             adjustment |= 0x60;
             set_new_carry_flag = true; // If C was set by subtraction, DAA also sets C.
@@ -353,46 +354,54 @@ pub fn op_rlca(cpu: &mut CPU) {
 
 */
 pub fn op_bit(cpu: &mut CPU, target: ByteTarget) {
-    let bit_mask: u8; 
+    let bit_mask: u8;
     let target_register_value: u8;
     match target {
         // [0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47]
-        ByteTarget::Zero(hl_target) => { // BIT 0, r
+        ByteTarget::Zero(hl_target) => {
+            // BIT 0, r
             bit_mask = 1 << 0;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F]
-        ByteTarget::One(hl_target) => { // BIT 1, r
+        ByteTarget::One(hl_target) => {
+            // BIT 1, r
             bit_mask = 1 << 1;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57]
-        ByteTarget::Two(hl_target) => { // BIT 2, r
+        ByteTarget::Two(hl_target) => {
+            // BIT 2, r
             bit_mask = 1 << 2;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F]
-        ByteTarget::Three(hl_target) => { // BIT 3, r
+        ByteTarget::Three(hl_target) => {
+            // BIT 3, r
             bit_mask = 1 << 3;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67]
-        ByteTarget::Four(hl_target) => { // BIT 4, r
+        ByteTarget::Four(hl_target) => {
+            // BIT 4, r
             bit_mask = 1 << 4;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F]
-        ByteTarget::Five(hl_target) => { // BIT 5, r
+        ByteTarget::Five(hl_target) => {
+            // BIT 5, r
             bit_mask = 1 << 5;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77]
-        ByteTarget::Six(hl_target) => { // BIT 6, r
+        ByteTarget::Six(hl_target) => {
+            // BIT 6, r
             bit_mask = 1 << 6;
             target_register_value = match_hl(cpu, &hl_target);
         }
         // [0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F]
-        ByteTarget::Seven(hl_target) => { // BIT 7, r
+        ByteTarget::Seven(hl_target) => {
+            // BIT 7, r
             bit_mask = 1 << 7;
             target_register_value = match_hl(cpu, &hl_target);
         }
@@ -466,7 +475,7 @@ pub fn op_res(cpu: &mut CPU, target: ByteTarget) {
     if is_mem {
         // if we're updating memory write back to grabbed location the new value
         cpu.bus
-            .write_byte( cpu.registers.get_hl(), target_register & mask);
+            .write_byte(cpu.registers.get_hl(), target_register & mask);
     } else {
         // Update the appropriate register based on found_target
         match found_target {
@@ -542,8 +551,7 @@ pub fn op_set(cpu: &mut CPU, target: ByteTarget) {
     if is_mem {
         // If we're updating memory, read current value and set the bit
         let value = cpu.bus.read_byte(None, cpu.registers.get_hl());
-        cpu.bus
-            .write_byte( cpu.registers.get_hl(), value | mask);
+        cpu.bus.write_byte(cpu.registers.get_hl(), value | mask);
     } else {
         // Update the appropriate register based on found_target
         match found_target {
@@ -718,50 +726,122 @@ pub fn op_sbc(cpu: &mut CPU, target: OPTarget) {
     match target {
         OPTarget::B => {
             let operand_value = cpu.registers.b;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::C => {
             let operand_value = cpu.registers.c;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::D => {
             let operand_value = cpu.registers.d;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
             // Increment the program counter -- NO, this is handled by main loop for 1-byte opcodes
             // cpu.pc = cpu.pc.wrapping_add(1);
         }
         OPTarget::E => {
             let operand_value = cpu.registers.e;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::H => {
             let operand_value = cpu.registers.h;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::L => {
             let operand_value = cpu.registers.l;
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::HL => {
             let operand_value = cpu.bus.read_byte(None, cpu.registers.get_hl());
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::A => {
             let operand_value = original_value; // SBC A, A
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
         }
         OPTarget::D8 => {
             let operand_value = cpu.bus.read_byte(None, cpu.pc + 1);
-            cpu.registers.a = original_value.wrapping_sub(operand_value).wrapping_sub(carry_in);
-            set_flags_after_sbc(cpu, cpu.registers.a, original_value, operand_value, carry_in);
+            cpu.registers.a = original_value
+                .wrapping_sub(operand_value)
+                .wrapping_sub(carry_in);
+            set_flags_after_sbc(
+                cpu,
+                cpu.registers.a,
+                original_value,
+                operand_value,
+                carry_in,
+            );
             cpu.pc = cpu.pc.wrapping_add(1); // Increment for the d8 operand
         }
     }
@@ -869,13 +949,13 @@ pub fn op_adc(cpu: &mut CPU, target: OPTarget) {
             set_flags_after_adc(cpu, cpu.registers.a, original_a, val);
         }
         // [0x8A]
-        OPTarget::D => { 
+        OPTarget::D => {
             let val = cpu.registers.d;
             cpu.registers.a = original_a.wrapping_add(val).wrapping_add(carry_in);
             set_flags_after_adc(cpu, cpu.registers.a, original_a, val);
         }
         // [0x8B]
-        OPTarget::E => { 
+        OPTarget::E => {
             let val = cpu.registers.e;
             cpu.registers.a = original_a.wrapping_add(val).wrapping_add(carry_in);
             set_flags_after_adc(cpu, cpu.registers.a, original_a, val);
@@ -918,14 +998,14 @@ pub fn op_adc(cpu: &mut CPU, target: OPTarget) {
 pub fn op_add(cpu: &mut CPU, target: OPType) {
     match target {
         // [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87] // ADD A, r
-        OPType::LoadA(hl_target_enum_val) => { 
+        OPType::LoadA(hl_target_enum_val) => {
             let reg_operand = match_hl(cpu, &hl_target_enum_val);
             let original_a = cpu.registers.a;
             cpu.registers.a = original_a.wrapping_add(reg_operand);
             set_flags_after_add_a(cpu, reg_operand, original_a, false);
         }
         // [0x09, 0x19, 0x29, 0x39] // ADD HL, rr
-        OPType::LoadHL(add_n16_target_enum_val) => { 
+        OPType::LoadHL(add_n16_target_enum_val) => {
             let original_hl = cpu.registers.get_hl();
             let value_to_add = match_n16(cpu, add_n16_target_enum_val.clone());
             cpu.registers.set_hl(original_hl.wrapping_add(value_to_add));
@@ -945,9 +1025,9 @@ pub fn op_add(cpu: &mut CPU, target: OPType) {
 
             // Set Flags using the correct function
             set_flags_after_add_sp_r8(cpu, original_sp, r8_signed);
-            
+
             // INC PC for opcode + r8
-            cpu.pc = cpu.pc.wrapping_add(1); 
+            cpu.pc = cpu.pc.wrapping_add(1);
         }
         // [0xC6] // ADD A, d8
         OPType::LoadD8 => {
@@ -983,7 +1063,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
             HLTarget::B => match source {
                 // [0x40]
                 HLTarget::B => {
-                    cpu.registers.b = cpu.registers.b;
+                    // LD B,B (no-op)
                 }
                 // [0x41]
                 HLTarget::C => {
@@ -1022,7 +1102,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x49]
                 HLTarget::C => {
-                    cpu.registers.c = cpu.registers.c;
+                    // LD C,C (no-op)
                 }
                 // [0x4A]
                 HLTarget::D => {
@@ -1061,7 +1141,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x52]
                 HLTarget::D => {
-                    cpu.registers.d = cpu.registers.d;
+                    // LD D,D (no-op)
                 }
                 // [0x53]
                 HLTarget::E => {
@@ -1100,7 +1180,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x5B]
                 HLTarget::E => {
-                    cpu.registers.e = cpu.registers.e;
+                    // LD E,E (no-op)
                 }
                 // [0x5C]
                 HLTarget::H => {
@@ -1139,7 +1219,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x64]
                 HLTarget::H => {
-                    cpu.registers.h = cpu.registers.h;
+                    // LD H,H (no-op)
                 }
                 // [0x65]
                 HLTarget::L => {
@@ -1178,7 +1258,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x6D]
                 HLTarget::L => {
-                    cpu.registers.l = cpu.registers.l;
+                    // LD L,L (no-op)
                 }
                 // [0x6E]
                 HLTarget::HL => {
@@ -1195,42 +1275,35 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 match source {
                     // [0x70]
                     HLTarget::B => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.b);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.b);
                     }
                     // [0x71]
                     HLTarget::C => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.c);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.c);
                     }
                     // [0x72]
                     HLTarget::D => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.d);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.d);
                     }
                     // [0x73]
                     HLTarget::E => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.e);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.e);
                     }
                     // [0x74]
                     HLTarget::H => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.h);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.h);
                     }
                     // [0x75]
                     HLTarget::L => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.l);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.l);
                     }
                     // [0x77]
                     HLTarget::A => {
-                        cpu.bus
-                            .write_byte( cpu.registers.get_hl(), cpu.registers.a);
+                        cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.a);
                     }
                     _ => panic!("Getting LD HL HL Should be HALT"),
                 }
-            },
+            }
             // [0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F]
             HLTarget::A => match source {
                 // [0x78]
@@ -1263,7 +1336,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0x7F]
                 HLTarget::A => {
-                    cpu.registers.a = cpu.registers.a;
+                    // LD A,A (no-op)
                 }
             },
         },
@@ -1300,7 +1373,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
 
                         let result_hl = (original_sp as i32 + r8_signed as i32) as u16;
                         cpu.registers.set_hl(result_hl);
-                        
+
                         set_flags_after_ld_spe8(cpu, original_sp, r8_signed);
 
                         cpu.pc = cpu.pc.wrapping_add(1);
@@ -1318,10 +1391,8 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 // [0x08]
                 LoadWordTarget::N16 => match source {
                     LoadWordSource::SP => {
-                        cpu.bus
-                            .write_byte( word_value, (cpu.sp & 0x00FF) as u8);
-                        cpu.bus
-                            .write_byte( word_value + 1, (cpu.sp >> 8) as u8);
+                        cpu.bus.write_byte(word_value, (cpu.sp & 0x00FF) as u8);
+                        cpu.bus.write_byte(word_value + 1, (cpu.sp >> 8) as u8);
                         cpu.pc = cpu.pc.wrapping_add(2);
                     }
                     _ => panic!("LD WORD BAD MATCH"),
@@ -1341,7 +1412,6 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                     _ => panic!("LD WORD BAD MATCH"),
                 },
             }
-
         }
         // [0x02, 0x12, 0x22, 0x32]
         LoadType::AStoreInN16(target) => {
@@ -1349,24 +1419,20 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
             match target {
                 // [0x02]
                 LoadN16::BC => {
-                    cpu.bus
-                        .write_byte( cpu.registers.get_bc(), cpu.registers.a);
+                    cpu.bus.write_byte(cpu.registers.get_bc(), cpu.registers.a);
                 }
                 // [0x12]
                 LoadN16::DE => {
-                    cpu.bus
-                        .write_byte( cpu.registers.get_de(), cpu.registers.a);
+                    cpu.bus.write_byte(cpu.registers.get_de(), cpu.registers.a);
                 }
                 // [0x22]
                 LoadN16::HLINC => {
-                    cpu.bus
-                        .write_byte( cpu.registers.get_hl(), cpu.registers.a);
+                    cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.a);
                     cpu.registers.set_hl(cpu.registers.get_hl().wrapping_add(1));
                 }
                 // [0x32]
                 LoadN16::HLDEC => {
-                    cpu.bus
-                        .write_byte( cpu.registers.get_hl(), cpu.registers.a);
+                    cpu.bus.write_byte(cpu.registers.get_hl(), cpu.registers.a);
                     cpu.registers.set_hl(cpu.registers.get_hl().wrapping_sub(1));
                 }
             }
@@ -1465,7 +1531,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 let value = cpu.registers.a;
 
                 cpu.bus.write_byte(address, value);
-                
+
                 // INC PC due to Byte Read
                 cpu.pc = cpu.pc.wrapping_add(1);
                 emu_cycles(cpu, 1);
@@ -1487,7 +1553,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
                 }
                 // [0xEA]
                 LoadA16Target::A16 => {
-                    cpu.bus.write_byte( address, cpu.registers.a);
+                    cpu.bus.write_byte(address, cpu.registers.a);
                     cpu.pc = cpu.pc.wrapping_add(2);
                     emu_cycles(cpu, 1);
                 }
@@ -1498,7 +1564,7 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
             // [0xE2]
             LoadACTarget::C => {
                 cpu.bus
-                    .write_byte( 0xFF00 + cpu.registers.c as u16, cpu.registers.a);
+                    .write_byte(0xFF00 + cpu.registers.c as u16, cpu.registers.a);
             }
             // [0xF2]
             LoadACTarget::A => {
@@ -1561,7 +1627,7 @@ pub fn op_dec(cpu: &mut CPU, target: AllRegisters) {
             let hl_addr = cpu.registers.get_hl();
             let original_value = cpu.bus.read_byte(None, hl_addr);
             let value = original_value.wrapping_sub(1);
-            cpu.bus.write_byte( hl_addr, value);
+            cpu.bus.write_byte(hl_addr, value);
             set_flags_after_dec(cpu, value, original_value);
             emu_cycles(cpu, 1);
         }
@@ -1636,7 +1702,7 @@ pub fn op_inc(cpu: &mut CPU, target: AllRegisters) {
             // Increment value at bus location HL
             let hl_addr = cpu.registers.get_hl();
             let value = cpu.bus.read_byte(None, hl_addr).wrapping_add(1);
-            cpu.bus.write_byte( hl_addr, value);
+            cpu.bus.write_byte(hl_addr, value);
             set_flags_after_inc(cpu, value);
         }
         // 16-bit register increments (don't need to Set Flags for these)
@@ -1650,7 +1716,7 @@ pub fn op_inc(cpu: &mut CPU, target: AllRegisters) {
         AllRegisters::DE => {
             let new_de = cpu.registers.get_de().wrapping_add(1);
             cpu.registers.set_de(new_de);
-            emu_cycles(cpu, 1); 
+            emu_cycles(cpu, 1);
         }
         // [0x23]
         AllRegisters::HL => {
@@ -1679,7 +1745,8 @@ pub fn op_jp(cpu: &mut CPU, target: JumpTest) -> bool {
         let most_significant = cpu.bus.read_byte(None, cpu.pc + 2) as u16;
         let nn_address = (most_significant << 8) | least_significant;
 
-        if match_jump(cpu, &target) { // Check condition (Always is true)
+        if match_jump(cpu, &target) {
+            // Check condition (Always is true)
             cpu.pc = nn_address;
             emu_cycles(cpu, 1); // cycle here?
             true // Jump occurred

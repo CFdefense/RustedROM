@@ -54,30 +54,30 @@ pub mod cart;
 pub mod ram;
 
 // Graphics and display
-pub mod ppu;
 pub mod lcd;
+pub mod ppu;
 pub mod ppu_pipeline;
 
 // Audio
 pub mod apu;
 
 // Input and timing
+pub mod dma;
 pub mod gamepad;
 pub mod timer;
-pub mod dma;
 
-// System infrastructure  
+// System infrastructure
 pub mod interrupts;
 pub mod io;
 pub mod stack;
 
 // CPU implementation
-pub mod instructions;
-pub mod registers;
 pub mod cpu_ops;
 pub mod cpu_util;
+pub mod instructions;
+pub mod registers;
 
 // User interface and debugging
-pub mod ui;
 pub mod debug;
 pub mod debug_timer;
+pub mod ui;
