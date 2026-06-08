@@ -1,40 +1,50 @@
-/**
- * Timer Module - Game Boy Hardware Timer System
- *
- * This module implements the Game Boy's timing system, which consists of a 16-bit internal
- * counter (DIV) and a configurable timer (TIMA/TMA/TAC). The timer system is crucial for
- * game timing, sound generation, and various game mechanics that depend on precise timing.
- *
- * Hardware Components:
- * - DIV: 16-bit internal divider register (upper 8 bits readable at 0xFF04)
- * - TIMA: 8-bit timer counter that increments based on TAC frequency setting
- * - TMA: 8-bit timer modulo - value loaded into TIMA when it overflows
- * - TAC: 8-bit timer control register (enable bit + 2-bit frequency select)
- *
- * Timer Frequencies (based on DIV bit transitions):
- * - 00: 4096 Hz (bit 9 of internal counter)
- * - 01: 262144 Hz (bit 3 of internal counter)
- * - 10: 65536 Hz (bit 5 of internal counter)
- * - 11: 16384 Hz (bit 7 of internal counter)
- *
- * The timer system generates interrupts when TIMA overflows from 0xFF to 0x00,
- * at which point TIMA is reloaded with the TMA value and a timer interrupt is requested.
- *
- * Timing Accuracy:
- * The implementation uses edge detection on specific bits of the internal counter
- * to achieve cycle-accurate timer behavior that matches original Game Boy hardware.
- */
+// Timer Module - Game Boy Hardware Timer System
+//
+// This module implements the Game Boy's timing system, which consists of a 16-bit internal
+// counter (DIV) and a configurable timer (TIMA/TMA/TAC). The timer system is crucial for
+// game timing, sound generation, and various game mechanics that depend on precise timing.
+//
+// Hardware Components:
+// - DIV: 16-bit internal divider register (upper 8 bits readable at 0xFF04)
+// - TIMA: 8-bit timer counter that increments based on TAC frequency setting
+// - TMA: 8-bit timer modulo - value loaded into TIMA when it overflows
+// - TAC: 8-bit timer control register (enable bit + 2-bit frequency select)
+//
+// Timer Frequencies (based on DIV bit transitions):
+// - 00: 4096 Hz (bit 9 of internal counter)
+// - 01: 262144 Hz (bit 3 of internal counter)
+// - 10: 65536 Hz (bit 5 of internal counter)
+// - 11: 16384 Hz (bit 7 of internal counter)
+//
+// The timer system generates interrupts when TIMA overflows from 0xFF to 0x00,
+// at which point TIMA is reloaded with the TMA value and a timer interrupt is requested.
+//
+// Timing Accuracy:
+// The implementation uses edge detection on specific bits of the internal counter
+// to achieve cycle-accurate timer behavior that matches original Game Boy hardware.
+
 use core::panic;
 
 use crate::hdw::cpu::CPU;
 use crate::hdw::interrupts::Interrupts;
 
-/**
- * Timer - Game Boy Timer Controller
- *
- * Manages the internal 16-bit counter and user-programmable timer system.
- * Handles timer overflow interrupts and provides accurate timing for games.
- */
+/// Game Boy Timer Controller.
+///
+/// Manages the internal 16-bit counter and user-programmable timer system.
+/// Handles timer overflow interrupts and provides accurate timing for games.
+///
+/// # Hardware Registers
+///
+/// - 0xFF04 (DIV): Divider register - upper 8 bits of internal 16-bit counter
+/// - 0xFF05 (TIMA): Timer counter - increments at selected frequency
+/// - 0xFF06 (TMA): Timer modulo - reload value for TIMA on overflow
+/// - 0xFF07 (TAC): Timer control - enable bit and frequency selection
+///
+/// # Timer Operation
+///
+/// The timer uses edge detection on specific bits of the internal DIV counter
+/// to generate TIMA increments at the selected frequency. When TIMA overflows
+/// from 0xFF to 0x00, it is reloaded with TMA and a timer interrupt is requested.
 pub struct Timer {
     /// 16-bit internal divider register - increments every CPU cycle
     /// Only upper 8 bits are exposed to software at address 0xFF04
@@ -120,13 +130,23 @@ impl Timer {
         }
     }
 
-    /**
-     * Handles writes to timer registers with hardware-accurate behavior
-     *
-     * Arguments:
-     * - address: Timer register address (0xFF04-0xFF07)
-     * - value: 8-bit value to write
-     */
+    /// Handles writes to timer registers with hardware-accurate behavior.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Timer register address (0xFF04-0xFF07)
+    /// * `value` - 8-bit value to write
+    ///
+    /// # Register Behavior
+    ///
+    /// - 0xFF04 (DIV): Writing any value resets the entire 16-bit internal counter to 0
+    /// - 0xFF05 (TIMA): Sets the timer counter value
+    /// - 0xFF06 (TMA): Sets the timer modulo (reload value)
+    /// - 0xFF07 (TAC): Sets timer control (enable and frequency)
+    ///
+    /// # Panics
+    ///
+    /// Panics if an unsupported address is provided.
     pub fn timer_write(&mut self, address: u16, value: u8) {
         match address {
             0xFF04 => {
@@ -141,14 +161,26 @@ impl Timer {
         }
     }
 
-    /**
-     * Handles reads from timer registers
-     *
-     * Arguments:
-     * - address: Timer register address (0xFF04-0xFF07)
-     *
-     * Returns: 8-bit register value
-     */
+    /// Handles reads from timer registers.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Timer register address (0xFF04-0xFF07)
+    ///
+    /// # Returns
+    ///
+    /// The 8-bit register value at the specified address.
+    ///
+    /// # Register Behavior
+    ///
+    /// - 0xFF04 (DIV): Returns upper 8 bits of the 16-bit internal counter
+    /// - 0xFF05 (TIMA): Returns current timer counter value
+    /// - 0xFF06 (TMA): Returns timer modulo value
+    /// - 0xFF07 (TAC): Returns timer control register
+    ///
+    /// # Panics
+    ///
+    /// Panics if an unsupported address is provided.
     pub fn timer_read(&self, address: u16) -> u8 {
         match address {
             0xFF04 => {

@@ -26,7 +26,6 @@
       debug: Debug Interface - Development tools and state inspection
       cpu_ops: CPU Operations - Instruction implementation functions
       cpu_util: CPU Utilities - Helper functions for instruction execution
-      debug_timer: Timer Debugging - Specialized debugging for timer-related issues
       ppu_pipeline: PPU Pipeline - Graphics rendering pipeline stages
 
     System Integration:
@@ -79,5 +78,4 @@ pub mod registers;
 
 // User interface and debugging
 pub mod debug;
-pub mod debug_timer;
 pub mod ui;

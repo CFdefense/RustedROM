@@ -52,7 +52,21 @@ use crate::hdw::cpu_util::*;
 use crate::hdw::emu::*;
 use crate::hdw::instructions::*;
 use crate::hdw::stack::*;
+
 // [0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F]
+/// Executes SRL (Shift Right Logical) instruction.
+///
+/// Shifts the target value right by 1 bit, filling the MSB with 0.
+/// The LSB is shifted into the carry flag. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x38-0x3F: [0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to shift
 pub fn op_srl(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let lsb = original_value & 0x1;
@@ -78,7 +92,19 @@ pub fn op_srl(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, lsb, result);
 }
 
-// [0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37]
+/// Executes SWAP instruction.
+///
+/// Exchanges the upper and lower nibbles of the target value.
+/// For example, 0xAB becomes 0xBA. Updates Z flag, clears N, H, C.
+///
+/// # Opcodes
+///
+/// CB 0x30-0x37: [0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to swap
 pub fn op_swap(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let result = (original_value << 4) | (original_value >> 4);
@@ -101,7 +127,19 @@ pub fn op_swap(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_swap(cpu, result);
 }
 
-// [0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F]
+/// Executes SRA (Shift Right Arithmetic) instruction.
+///
+/// Shifts the target value right by 1 bit, preserving the MSB (sign bit).
+/// The LSB is shifted into the carry flag. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x28-0x2F: [0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to shift
 pub fn op_sra(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let lsb = original_value & 0x1;
@@ -127,7 +165,19 @@ pub fn op_sra(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, lsb, result);
 }
 
-// [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27]
+/// Executes SLA (Shift Left Arithmetic) instruction.
+///
+/// Shifts the target value left by 1 bit, filling the LSB with 0.
+/// The MSB is shifted into the carry flag. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x20-0x27: [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to shift
 pub fn op_sla(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let bit_7 = (original_value >> 7) & 0x1; // MSB for carry
@@ -151,7 +201,19 @@ pub fn op_sla(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, bit_7, result);
 }
 
-// [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+/// Executes RLC (Rotate Left Circular) instruction.
+///
+/// Rotates the target value left by 1 bit. The MSB is rotated into both
+/// the LSB and the carry flag. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x00-0x07: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to rotate
 pub fn op_rlc(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let bit_7 = (original_value >> 7) & 0x1; // MSB for carry and for rotating to bit 0
@@ -175,7 +237,19 @@ pub fn op_rlc(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, bit_7, result);
 }
 
-// [0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+/// Executes RRC (Rotate Right Circular) instruction.
+///
+/// Rotates the target value right by 1 bit. The LSB is rotated into both
+/// the MSB and the carry flag. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x08-0x0F: [0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to rotate
 pub fn op_rrc(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let bit_0 = original_value & 0x1; // LSB for carry and for rotating to bit 7
@@ -199,7 +273,19 @@ pub fn op_rrc(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, bit_0, result);
 }
 
-// [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]
+/// Executes RL (Rotate Left through Carry) instruction.
+///
+/// Rotates the target value left by 1 bit through the carry flag.
+/// The MSB goes to carry, old carry goes to LSB. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x10-0x17: [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to rotate
 pub fn op_rl(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let prev_carry = cpu.registers.f.carry as u8;
@@ -224,7 +310,19 @@ pub fn op_rl(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, new_carry_val, result);
 }
 
-// [0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F]
+/// Executes RR (Rotate Right through Carry) instruction.
+///
+/// Rotates the target value right by 1 bit through the carry flag.
+/// The LSB goes to carry, old carry goes to MSB. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// CB 0x18-0x1F: [0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or memory location to rotate
 pub fn op_rr(cpu: &mut CPU, target: HLTarget) {
     let original_value = match_hl(cpu, &target);
     let prev_carry = cpu.registers.f.carry as u8;
@@ -249,7 +347,14 @@ pub fn op_rr(cpu: &mut CPU, target: HLTarget) {
     set_flags_after_pref_op(cpu, new_carry_val, result);
 }
 
-// [0x2F]
+/// Executes CPL (Complement) instruction.
+///
+/// Inverts all bits in the accumulator (A register). Sets N and H flags,
+/// leaves Z and C flags unchanged.
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_cpl(cpu: &mut CPU) {
     // Flip all bits of register A
     cpu.registers.a = !cpu.registers.a;
@@ -258,7 +363,15 @@ pub fn op_cpl(cpu: &mut CPU) {
     set_flags_after_cpl(cpu);
 }
 
-// [0x27]
+/// Executes DAA (Decimal Adjust Accumulator) instruction.
+///
+/// Adjusts the accumulator after BCD (Binary Coded Decimal) arithmetic
+/// to produce correct BCD results. Uses N, H, and C flags from the
+/// previous operation to determine the adjustment. Updates Z and C flags.
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_daa(cpu: &mut CPU) {
     let mut a_val = cpu.registers.a;
     let n_flag = cpu.registers.f.subtract; // N flag from previous operation
@@ -298,7 +411,14 @@ pub fn op_daa(cpu: &mut CPU) {
     set_flags_after_daa(cpu, set_new_carry_flag);
 }
 
-// [0x1F]
+/// Executes RRA (Rotate Right Accumulator) instruction.
+///
+/// Rotates the accumulator right through carry. Non-prefixed version that
+/// always clears the Z flag. Updates C flag with old bit 0.
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_rra(cpu: &mut CPU) {
     // Store the original bit 0 to set the carry flag
     let bit_0 = cpu.registers.a & 1;
@@ -310,7 +430,14 @@ pub fn op_rra(cpu: &mut CPU) {
     set_flags_after_no_pre_rl_rr(cpu, bit_0);
 }
 
-// [0x17]
+/// Executes RLA (Rotate Left Accumulator) instruction.
+///
+/// Rotates the accumulator left through carry. Non-prefixed version that
+/// always clears the Z flag. Updates C flag with old bit 7.
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_rla(cpu: &mut CPU) {
     // Store the original bit 7 to set the carry flag
     let bit_7 = (cpu.registers.a & 0x80) >> 7;
@@ -322,7 +449,18 @@ pub fn op_rla(cpu: &mut CPU) {
     set_flags_after_no_pre_rl_rr(cpu, bit_7);
 }
 
-// [0x0F]
+/// Executes RRCA (Rotate Right Circular Accumulator) instruction.
+///
+/// Rotates the accumulator right circularly. Non-prefixed version that
+/// always clears the Z flag. Bit 0 goes to both bit 7 and carry.
+///
+/// # Opcodes
+///
+/// 0x0F
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_rrca(cpu: &mut CPU) {
     // Store the original bit 0 to set the carry flag and bit 7
     let bit_0 = cpu.registers.a & 1;
@@ -333,8 +471,18 @@ pub fn op_rrca(cpu: &mut CPU) {
     // Update Flags
     set_flags_after_no_pre_rl_rr(cpu, bit_0);
 }
-// [0x07]
-
+/// Executes RLCA (Rotate Left Circular Accumulator) instruction.
+///
+/// Rotates the accumulator left circularly. Non-prefixed version that
+/// always clears the Z flag. Bit 7 goes to both bit 0 and carry.
+///
+/// # Opcodes
+///
+/// 0x07
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_rlca(cpu: &mut CPU) {
     // Store the original bit 7 to set the Carry flag and bit 0
     let bit_7 = (cpu.registers.a >> 7) & 1;
@@ -346,13 +494,21 @@ pub fn op_rlca(cpu: &mut CPU) {
     set_flags_after_no_pre_rl_rr(cpu, bit_7);
 }
 
-/*
-[0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
- 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
- 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
- 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F]
-
-*/
+/// Executes BIT instruction.
+///
+/// Tests a specific bit in the target register or memory location.
+/// Sets Z flag if the bit is 0, clears N flag, sets H flag.
+/// Does not modify the target value.
+///
+/// # Opcodes
+///
+/// CB 0x40-0x7F: [0x40-0x47, 0x48-0x4F, 0x50-0x57, 0x58-0x5F,
+///                0x60-0x67, 0x68-0x6F, 0x70-0x77, 0x78-0x7F]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - ByteTarget specifying bit position (0-7) and register
 pub fn op_bit(cpu: &mut CPU, target: ByteTarget) {
     let bit_mask: u8;
     let target_register_value: u8;
@@ -411,12 +567,20 @@ pub fn op_bit(cpu: &mut CPU, target: ByteTarget) {
     set_flags_after_bit(cpu, bit_mask, target_register_value);
 }
 
-/*
-[0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F,
- 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
- 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
- 0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF]
-*/
+/// Executes RES (Reset Bit) instruction.
+///
+/// Resets (clears to 0) a specific bit in the target register or memory location.
+/// Does not affect any flags.
+///
+/// # Opcodes
+///
+/// CB 0x80-0xBF: [0x80-0x87, 0x88-0x8F, 0x90-0x97, 0x98-0x9F,
+///                0xA0-0xA7, 0xA8-0xAF, 0xB0-0xB7, 0xB8-0xBF]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - ByteTarget specifying bit position (0-7) and register
 pub fn op_res(cpu: &mut CPU, target: ByteTarget) {
     let mask: u8;
     let target_register: u8;
@@ -491,12 +655,20 @@ pub fn op_res(cpu: &mut CPU, target: ByteTarget) {
     }
 }
 
-/*
-[0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF
- 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF
- 0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF
- 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF]
-*/
+/// Executes SET (Set Bit) instruction.
+///
+/// Sets (to 1) a specific bit in the target register or memory location.
+/// Does not affect any flags.
+///
+/// # Opcodes
+///
+/// CB 0xC0-0xFF: [0xC0-0xC7, 0xC8-0xCF, 0xD0-0xD7, 0xD8-0xDF,
+///                0xE0-0xE7, 0xE8-0xEF, 0xF0-0xF7, 0xF8-0xFF]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - ByteTarget specifying bit position (0-7) and register
 pub fn op_set(cpu: &mut CPU, target: ByteTarget) {
     let mask: u8;
     let is_mem: bool;
@@ -567,7 +739,19 @@ pub fn op_set(cpu: &mut CPU, target: ByteTarget) {
     }
 }
 
-// [0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xFE]
+/// Executes CP (Compare) instruction.
+///
+/// Compares the accumulator with the target value by performing a subtraction
+/// without storing the result. Updates Z, N, H, C flags based on the comparison.
+///
+/// # Opcodes
+///
+/// 0xB8-0xBF, 0xFE: [0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xFE]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand to compare with accumulator
 pub fn op_cp(cpu: &mut CPU, target: OPTarget) {
     match target {
         OPTarget::B => {
@@ -605,7 +789,19 @@ pub fn op_cp(cpu: &mut CPU, target: OPTarget) {
     }
 }
 
-// [0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xF6]
+/// Executes OR instruction.
+///
+/// Performs bitwise OR between the accumulator and the target value,
+/// storing the result in the accumulator. Updates Z flag, clears N, H, C.
+///
+/// # Opcodes
+///
+/// 0xB0-0xB7, 0xF6: [0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xF6]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand for OR operation
 pub fn op_or(cpu: &mut CPU, target: OPTarget) {
     match target {
         OPTarget::B => {
@@ -643,7 +839,19 @@ pub fn op_or(cpu: &mut CPU, target: OPTarget) {
     set_flags_after_xor_or(cpu, cpu.registers.a);
 }
 
-// [0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF, 0xEE]
+/// Executes XOR instruction.
+///
+/// Performs bitwise XOR between the accumulator and the target value,
+/// storing the result in the accumulator. Updates Z flag, clears N, H, C.
+///
+/// # Opcodes
+///
+/// 0xA8-0xAF, 0xEE: [0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF, 0xEE]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand for XOR operation
 pub fn op_xor(cpu: &mut CPU, target: OPTarget) {
     match target {
         OPTarget::B => {
@@ -681,7 +889,19 @@ pub fn op_xor(cpu: &mut CPU, target: OPTarget) {
     set_flags_after_xor_or(cpu, cpu.registers.a);
 }
 
-// [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xE6]
+/// Executes AND instruction.
+///
+/// Performs bitwise AND between the accumulator and the target value,
+/// storing the result in the accumulator. Updates Z flag, clears N and C, sets H.
+///
+/// # Opcodes
+///
+/// 0xA0-0xA7, 0xE6: [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xE6]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand for AND operation
 pub fn op_and(cpu: &mut CPU, target: OPTarget) {
     match target {
         OPTarget::B => {
@@ -718,7 +938,19 @@ pub fn op_and(cpu: &mut CPU, target: OPTarget) {
     set_flags_after_and(cpu, cpu.registers.a);
 }
 
-// [0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xDE]
+/// Executes SBC (Subtract with Carry) instruction.
+///
+/// Subtracts the target value and the carry flag from the accumulator,
+/// storing the result in the accumulator. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// 0x98-0x9F, 0xDE: [0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xDE]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand to subtract from accumulator
 pub fn op_sbc(cpu: &mut CPU, target: OPTarget) {
     let original_value = cpu.registers.a;
     let carry_in = cpu.registers.f.carry as u8;
@@ -847,7 +1079,19 @@ pub fn op_sbc(cpu: &mut CPU, target: OPTarget) {
     }
 }
 
-// [0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xD6]
+/// Executes SUB (Subtract) instruction.
+///
+/// Subtracts the target value from the accumulator, storing the result
+/// in the accumulator. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// 0x90-0x97, 0xD6: [0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xD6]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand to subtract from accumulator
 pub fn op_sub(cpu: &mut CPU, target: OPTarget) {
     // Get Original Value
     let original_value = cpu.registers.a;
@@ -930,7 +1174,19 @@ pub fn op_sub(cpu: &mut CPU, target: OPTarget) {
     }
 }
 
-// [0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, 0xCE]
+/// Executes ADC (Add with Carry) instruction.
+///
+/// Adds the target value and the carry flag to the accumulator,
+/// storing the result in the accumulator. Updates Z, N, H, C flags.
+///
+/// # Opcodes
+///
+/// 0x88-0x8F, 0xCE: [0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, 0xCE]
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Source operand to add to accumulator
 pub fn op_adc(cpu: &mut CPU, target: OPTarget) {
     let original_a = cpu.registers.a; // Store Original A
     let carry_in = cpu.registers.f.carry as u8; // Carry that will be part of the sum
@@ -994,7 +1250,19 @@ pub fn op_adc(cpu: &mut CPU, target: OPTarget) {
     }
 }
 
-// [0x09, 0x19, 0x29, 0x39, 0x80-0x87, 0xC6, 0xE8]
+/// Executes ADD instruction.
+///
+/// Adds values to the accumulator (8-bit), HL register (16-bit), or SP register.
+/// Updates flags based on the operation type. Supports multiple addressing modes.
+///
+/// # Opcodes
+///
+/// 0x09, 0x19, 0x29, 0x39 (ADD HL,rr), 0x80-0x87 (ADD A,r), 0xC6 (ADD A,d8), 0xE8 (ADD SP,e8)
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - OPType specifying the ADD variant and operands
 pub fn op_add(cpu: &mut CPU, target: OPType) {
     match target {
         // [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87] // ADD A, r
@@ -1040,22 +1308,22 @@ pub fn op_add(cpu: &mut CPU, target: OPType) {
     }
 }
 
-/*
-[0x01, 0x11, 0x21, 0x31,
- 0x02, 0x12, 0x22, 0x32,
- 0x06, 0x16, 0x26, 0x36,
- 0x0A, 0x1A, 0x2A, 0x3A,
- 0x0E, 0x1E, 0x2E, 0x3E
- 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
- 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
- 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57,
- 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
- 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
- 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
- 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x77,
- 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F
- 0xE0, 0xF0, 0xE2, 0xF2, 0x08, 0xF8, 0xF9, 0xEA, 0xFA]
-*/
+/// Executes LD (Load) instruction.
+///
+/// Comprehensive load instruction supporting all Game Boy addressing modes:
+/// register-to-register, immediate values, memory operations, and special cases.
+/// Does not affect flags.
+///
+/// # Opcodes
+///
+/// Multiple ranges: 0x01-0x3E (16-bit/8-bit immediate), 0x40-0x7F (register moves),
+/// 0x08 (LD (a16),SP), 0xE0/0xF0 (high RAM), 0xE2/0xF2 (C-indexed), 0xEA/0xFA (absolute),
+/// 0xF8 (LD HL,SP+e8), 0xF9 (LD SP,HL)
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - LoadType specifying source and destination
 pub fn op_ld(cpu: &mut CPU, target: LoadType) {
     match target {
         LoadType::RegInReg(target, source) => match target {
@@ -1575,6 +1843,19 @@ pub fn op_ld(cpu: &mut CPU, target: LoadType) {
 }
 
 // [0x05, 0x0B, 0x0D, 0x15, 0x1B, 0x1D, 0x25, 0x2B, 0x2D, 0x35, 0x3B, 0x3D]
+/// Executes DEC (Decrement) instruction.
+///
+/// Decrements 8-bit registers (updates Z, N, H flags) or 16-bit register pairs
+/// (no flag updates). For 8-bit: sets N flag, updates Z and H flags.
+///
+/// # Opcodes
+///
+/// 0x05, 0x0B, 0x0D, 0x15, 0x1B, 0x1D, 0x25, 0x2B, 0x2D, 0x35, 0x3B, 0x3D
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or register pair to decrement
 pub fn op_dec(cpu: &mut CPU, target: AllRegisters) {
     match target {
         // Increment 8-bit registers and Set Flags
@@ -1658,7 +1939,19 @@ pub fn op_dec(cpu: &mut CPU, target: AllRegisters) {
     }
 }
 
-// [0x03, 0x04, 0x0C, 0x13, 0x14, 0x1C, 0x23, 0x24, 0x2C, 0x33, 0x34, 0x3C]
+/// Executes INC (Increment) instruction.
+///
+/// Increments 8-bit registers (updates Z, N, H flags) or 16-bit register pairs
+/// (no flag updates). For 8-bit: clears N flag, updates Z and H flags.
+///
+/// # Opcodes
+///
+/// 0x03, 0x04, 0x0C, 0x13, 0x14, 0x1C, 0x23, 0x24, 0x2C, 0x33, 0x34, 0x3C
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register or register pair to increment
 pub fn op_inc(cpu: &mut CPU, target: AllRegisters) {
     match target {
         // Increment 8-bit registers and Set Flags
@@ -1732,7 +2025,23 @@ pub fn op_inc(cpu: &mut CPU, target: AllRegisters) {
     }
 }
 
-// [0xC2, 0xC3, 0xCA, 0xD2, 0xDA, 0xE9]
+/// Executes JP (Jump) instruction.
+///
+/// Unconditional or conditional jump to absolute 16-bit address or HL register.
+/// Does not affect flags. Returns true if jump occurred.
+///
+/// # Opcodes
+///
+/// 0xC2, 0xC3, 0xCA, 0xD2, 0xDA, 0xE9
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Jump condition or HL register
+///
+/// # Returns
+///
+/// `true` if jump was taken, `false` if condition was not met
 pub fn op_jp(cpu: &mut CPU, target: JumpTest) -> bool {
     if matches!(target, JumpTest::HL) {
         // For JP HL (0xE9), jump to the address in HL
@@ -1757,7 +2066,23 @@ pub fn op_jp(cpu: &mut CPU, target: JumpTest) -> bool {
     }
 }
 
-// [0xC4, 0xCC, 0xCD, 0xD4, 0xDC]
+/// Executes CALL instruction.
+///
+/// Pushes return address onto stack and jumps to 16-bit address if condition met.
+/// Does not affect flags.
+///
+/// # Opcodes
+///
+/// 0xC4, 0xCC, 0xCD, 0xD4, 0xDC
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Call condition
+///
+/// # Returns
+///
+/// New PC value after call
 pub fn op_call(cpu: &mut CPU, target: JumpTest) -> u16 {
     // Jump to addr in bus or increment pc
 
@@ -1776,7 +2101,23 @@ pub fn op_call(cpu: &mut CPU, target: JumpTest) -> u16 {
     )
 }
 
-// [0x18, 0x20, 0x28, 0x30, 0x38]
+/// Executes JR (Jump Relative) instruction.
+///
+/// Relative jump using signed 8-bit offset from current PC if condition met.
+/// Does not affect flags.
+///
+/// # Opcodes
+///
+/// 0x18, 0x20, 0x28, 0x30, 0x38
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Jump condition
+///
+/// # Returns
+///
+/// New PC value after jump
 pub fn op_jr(cpu: &mut CPU, target: JumpTest) -> u16 {
     let jump_distance = cpu.bus.read_byte(None, cpu.pc + 1) as i8;
     //println!("Jump Distance: {:02X}", jump_distance);
@@ -1788,7 +2129,19 @@ pub fn op_jr(cpu: &mut CPU, target: JumpTest) -> u16 {
     )
 }
 
-// [0xC1, 0xD1, 0xE1, 0xF1]
+/// Executes POP instruction.
+///
+/// Pops 16-bit value from stack into register pair. For AF, lower 4 bits
+/// of F are masked to 0. Does not affect flags (except when popping AF).
+///
+/// # Opcodes
+///
+/// 0xC1, 0xD1, 0xE1, 0xF1
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register pair to pop into
 pub fn op_pop(cpu: &mut CPU, target: StackTarget) {
     // Pop Low and High Bytes
     let low: u16 = stack_pop(cpu) as u16;
@@ -1818,7 +2171,19 @@ pub fn op_pop(cpu: &mut CPU, target: StackTarget) {
     }
 }
 
-// [0xC5, 0xD5, 0xE5, 0xF5]
+/// Executes PUSH instruction.
+///
+/// Pushes 16-bit register pair onto stack (high byte first, then low byte).
+/// Does not affect flags.
+///
+/// # Opcodes
+///
+/// 0xC5, 0xD5, 0xE5, 0xF5
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Register pair to push
 pub fn op_push(cpu: &mut CPU, target: StackTarget) {
     match target {
         // [0xF5]
@@ -1856,7 +2221,23 @@ pub fn op_push(cpu: &mut CPU, target: StackTarget) {
     emu_cycles(cpu, 1);
 }
 
-// [0xC0, 0xD0, 0xD8, 0xC8, 0xC9]
+/// Executes RET (Return) instruction.
+///
+/// Pops return address from stack and jumps to it if condition met.
+/// Does not affect flags. Returns true if return occurred.
+///
+/// # Opcodes
+///
+/// 0xC0, 0xC8, 0xC9, 0xD0, 0xD8
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Return condition
+///
+/// # Returns
+///
+/// `true` if return was taken, `false` if condition was not met
 pub fn op_ret(cpu: &mut CPU, target: JumpTest) -> bool {
     // Cycle if condition is not Always
     if !matches!(target, JumpTest::Always) {
@@ -1878,7 +2259,18 @@ pub fn op_ret(cpu: &mut CPU, target: JumpTest) -> bool {
     false // Return did not happen
 }
 
-// [0xD9]
+/// Executes RETI (Return from Interrupt) instruction.
+///
+/// Returns from interrupt handler by popping PC from stack and
+/// re-enabling interrupts (IME = 1). Does not affect flags.
+///
+/// # Opcodes
+///
+/// 0xD9
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
 pub fn op_reti(cpu: &mut CPU) {
     // Update Interrupt
     cpu.bus.interrupt_controller.set_master_enabled(true);
@@ -1887,7 +2279,20 @@ pub fn op_reti(cpu: &mut CPU) {
     op_ret(cpu, JumpTest::Always);
 }
 
-// [0xC7, 0xD7, 0xE7, 0xF7, 0xFC, 0xFD, 0xFE, 0xFF]
+/// Executes RST (Restart) instruction.
+///
+/// Pushes current PC onto stack and jumps to one of 8 fixed addresses
+/// (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38). Used for fast
+/// calls to common routines and interrupt vectors. Does not affect flags.
+///
+/// # Opcodes
+///
+/// 0xC7, 0xCF, 0xD7, 0xDF, 0xE7, 0xEF, 0xF7, 0xFF
+///
+/// # Arguments
+///
+/// * `cpu` - Mutable CPU reference
+/// * `target` - Reset vector (0-7) specifying which address to jump to
 pub fn op_rst(cpu: &mut CPU, target: RestTarget) {
     let low: u16 = match target {
         RestTarget::Zero => 0x00,

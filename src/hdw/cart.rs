@@ -118,67 +118,126 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-/*
 
---TODO--
-
-Bank valid Cart Data From Resource
-
-Load Rom
-
-Error Handle
-
-Print Info
-
-Checksum
-
-*/
-
+/// Cartridge header information parsed from ROM bytes 0x0100-0x014F.
+///
+/// Contains metadata about the game cartridge including title, publisher,
+/// hardware capabilities, and checksums. This information is used to configure
+/// the emulator's memory bank controller and save system.
 struct CartridgeHeader {
-    //entry_point: [u8; 4],
-    //nintendo_logo: [u8; 0x30],
+    /// Game title (16 bytes ASCII) from ROM offset 0x0134-0x0143.
     rom_title: [u8; 16],
+
+    /// New licensee code (16-bit) for publisher identification.
     new_lic_code: u16,
+
+    /// Super Game Boy flag - 0x03 indicates SGB enhancement support.
     sgb_flag: u8,
+
+    /// Cartridge type code identifying MBC and additional hardware (0x00-0xFF).
     cart_type: u8,
+
+    /// ROM size code - actual size is 32KB × (1 << rom_size).
     rom_size: u8,
+
+    /// RAM size code - determines external RAM bank allocation.
     ram_size: u8,
+
+    /// Destination code - 0x00 for Japan, 0x01 for overseas.
     dest_code: u8,
+
+    /// Old licensee code (8-bit) - legacy publisher identification.
     old_lic_code: u8,
+
+    /// ROM version number - game revision identifier.
     version: u8,
+
+    /// Header checksum - validates bytes 0x0134-0x014C.
     checksum: u8,
+
+    /// Global checksum - sum of all ROM bytes (not validated by hardware).
     global_checksum: u16,
 }
 
+/// Game Boy cartridge with Memory Bank Controller (MBC) emulation.
+///
+/// Implements complete cartridge emulation including ROM/RAM banking, battery-backed
+/// saves, and real-time clock support. Supports MBC1, MBC2, MBC3, and MBC5 controllers
+/// with accurate banking behavior and save file management.
+///
+/// # Memory Bank Controllers
+///
+/// - **MBC1**: 5-bit ROM banking (1-31), 2-bit RAM banking (0-3), mode selection
+/// - **MBC2**: 4-bit ROM banking (1-15), built-in 512×4-bit RAM
+/// - **MBC3**: 7-bit ROM banking (1-127), 4 RAM banks, RTC support
+/// - **MBC5**: 9-bit ROM banking (0-511), 16 RAM banks, no mode selection
+///
+/// # Save System
+///
+/// Battery-backed cartridges automatically save RAM to `saves/{rom_name}.battery`
+/// when RAM is modified. Saves are loaded on cartridge initialization.
 pub struct Cartridge {
+    /// Original ROM file path for save file naming.
     file_name: String,
+
+    /// Total ROM size in bytes (calculated from header).
     rom_size: usize,
+
+    /// Complete ROM data loaded into memory.
     rom_data: Vec<u8>,
+
+    /// Parsed cartridge header information.
     rom_header: CartridgeHeader,
 
-    // MBC Type 1 & 3
+    /// RAM enable state - controlled by writes to 0x0000-0x1FFF.
     ram_enabled: bool,
+
+    /// RAM banking mode enabled flag.
     ram_banking: bool,
-    rom_bank_x: usize, // Index into ROM data for current bank
+
+    /// Current ROM bank start offset in rom_data (bank × 0x4000).
+    rom_bank_x: usize,
+
+    /// MBC1 banking mode - 0 for simple, 1 for advanced.
     banking_mode: u8,
+
+    /// Current ROM bank register value.
     rom_bank_value: u8,
+
+    /// Current RAM bank register value.
     ram_bank_value: u8,
-    ram_bank: usize,                  // Index into ram_banks
-    ram_banks: [Option<Vec<u8>>; 16], // Each bank is 8KB when allocated
+
+    /// Active RAM bank index (0-15).
+    ram_bank: usize,
+
+    /// RAM bank array - each bank is 8KB when allocated.
+    ram_banks: [Option<Vec<u8>>; 16],
+
+    /// Battery backup support flag from cartridge type.
     battery: bool,
+
+    /// Save pending flag - true when RAM modified since last save.
     need_save: bool,
 
-    // MBC5 specific
-    mbc5_rom_bank_upper: u8, // Upper bit for MBC5's 9-bit ROM bank register
+    /// MBC5 upper ROM bank bit (bit 8 of 9-bit bank number).
+    mbc5_rom_bank_upper: u8,
 
-    // MBC3 RTC (Real Time Clock) support
-    rtc_registers: [u8; 5],  // RTC S, M, H, DL, DH (0x08-0x0C)
-    rtc_latched: [u8; 5],    // Latched RTC values
-    rtc_latch_state: u8,     // For latch sequence (0x00 -> 0x01)
-    rtc_selected: bool,      // True if RTC register selected instead of RAM
-    rtc_register_select: u8, // Which RTC register (0x08-0x0C)
+    /// MBC3 RTC registers: [seconds, minutes, hours, day_low, day_high].
+    rtc_registers: [u8; 5],
 
-    // RTC timing (simplified - real implementation would use system time)
+    /// Latched RTC values for stable multi-byte reads.
+    rtc_latched: [u8; 5],
+
+    /// RTC latch sequence state (0x00 → 0x01 latches values).
+    rtc_latch_state: u8,
+
+    /// RTC register selected flag (true = RTC, false = RAM).
+    rtc_selected: bool,
+
+    /// Selected RTC register (0x08-0x0C for S/M/H/DL/DH).
+    rtc_register_select: u8,
+
+    /// Last system time reference for RTC updates.
     rtc_last_time: std::time::SystemTime,
 }
 
@@ -210,6 +269,19 @@ impl Cartridge {
         cartridge
     }
 
+    /// Configures RAM banks and MBC-specific settings based on cartridge header.
+    ///
+    /// Allocates RAM banks according to the RAM size code in the header and
+    /// initializes MBC-specific registers and states. Called automatically
+    /// after ROM loading.
+    ///
+    /// # RAM Allocation
+    ///
+    /// - RAM size 2: 1 bank (8KB)
+    /// - RAM size 3: 4 banks (32KB)
+    /// - RAM size 4: 16 banks (128KB)
+    /// - RAM size 5: 8 banks (64KB)
+    /// - MBC2: Built-in 512×4-bit RAM (256 bytes)
     pub fn cart_setup_banking(&mut self) {
         for i in 0..16 {
             self.ram_banks[i] = None;
@@ -268,6 +340,16 @@ impl Cartridge {
         }
     }
 
+    /// Loads battery-backed save data from disk if available.
+    ///
+    /// Attempts to load save data from `saves/{rom_name}.battery` into the
+    /// current RAM bank. Called automatically after ROM loading for cartridges
+    /// with battery support.
+    ///
+    /// # File Format
+    ///
+    /// Save files contain raw RAM bank data (8KB per bank). If the save file
+    /// is smaller than expected, only available data is loaded.
     pub fn cart_load_battery(&mut self) {
         if self.ram_banks[self.ram_bank].is_none() {
             return;
@@ -298,6 +380,16 @@ impl Cartridge {
         }
     }
 
+    /// Saves battery-backed RAM data to disk.
+    ///
+    /// Writes the current RAM bank (8KB) to `saves/{rom_name}.battery`.
+    /// Creates the saves directory if it doesn't exist. Clears the `need_save`
+    /// flag on successful save.
+    ///
+    /// # File Location
+    ///
+    /// Save files are stored in the `saves/` directory with the ROM filename
+    /// plus `.battery` extension.
     pub fn cart_save_battery(&mut self) {
         if self.ram_banks[self.ram_bank].is_none() {
             return;
@@ -407,6 +499,10 @@ impl Cartridge {
         Ok(())
     }
 
+    /// Prints cartridge information to console.
+    ///
+    /// Displays ROM title, publisher, cartridge type, ROM/RAM sizes, and other
+    /// header information for debugging and informational purposes.
     fn print_info(&self) {
         println!("Cartridge Information:");
         println!(
@@ -449,6 +545,15 @@ impl Cartridge {
         );
     }
 
+    /// Validates the cartridge header checksum.
+    ///
+    /// Calculates the checksum over header bytes 0x0134-0x014C and compares
+    /// it to the stored checksum at 0x014D. The checksum algorithm uses
+    /// wrapping subtraction.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if checksum matches, `Err(String)` with error message if validation fails.
     fn checksum_test(&self) -> Result<(), String> {
         // Calculate the checksum of the ROM using the specified method
         let mut checksum: u8 = 0;
@@ -470,7 +575,24 @@ impl Cartridge {
         }
     }
 
-    // Method to read a byte at an address
+    /// Reads a byte from cartridge memory (ROM or RAM).
+    ///
+    /// Handles ROM bank switching, RAM access control, and RTC register reads
+    /// for MBC cartridges. Updates RTC time for MBC3 cartridges with RTC support.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to read from (0x0000-0xBFFF)
+    ///
+    /// # Returns
+    ///
+    /// The byte value at the specified address, or 0xFF for disabled/invalid access.
+    ///
+    /// # Address Ranges
+    ///
+    /// - 0x0000-0x3FFF: ROM bank 0 (fixed)
+    /// - 0x4000-0x7FFF: ROM bank 1+ (switchable)
+    /// - 0xA000-0xBFFF: External RAM or RTC registers (if enabled)
     pub fn read_byte(&mut self, address: u16) -> u8 {
         if address < 0x4000 {
             return self.rom_data[address as usize];
@@ -535,7 +657,25 @@ impl Cartridge {
         }
     }
 
-    // Method to write a value to an address
+    /// Writes a byte to cartridge memory (ROM/RAM control or RAM data).
+    ///
+    /// Handles MBC register writes for banking control and RAM enable, as well
+    /// as actual RAM writes when RAM is enabled. Different MBC types have
+    /// different register layouts and behaviors.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to write to (0x0000-0xBFFF)
+    /// * `value` - Byte value to write
+    ///
+    /// # Address Ranges
+    ///
+    /// - 0x0000-0x1FFF: RAM/RTC enable (0x0A enables, other values disable)
+    /// - 0x2000-0x2FFF: ROM bank select (lower bits)
+    /// - 0x3000-0x3FFF: ROM bank select upper bit (MBC5 only)
+    /// - 0x4000-0x5FFF: RAM bank or RTC register select
+    /// - 0x6000-0x7FFF: Banking mode select (MBC1) or RTC latch (MBC3)
+    /// - 0xA000-0xBFFF: External RAM or RTC register access
     pub fn write_byte(&mut self, address: u16, mut value: u8) {
         if !self.cart_mbc1() && !self.cart_mbc2() && !self.cart_mbc3() && !self.cart_mbc5() {
             return;
@@ -724,10 +864,26 @@ impl Cartridge {
         }
     }
 
+    /// Checks if save data needs to be written to disk.
+    ///
+    /// Returns true when RAM has been modified since the last save operation.
+    /// Used by the emulator to trigger periodic saves.
+    ///
+    /// # Returns
+    ///
+    /// `true` if RAM has been modified and needs saving, `false` otherwise.
     pub fn cart_needs_save(&self) -> bool {
         self.need_save
     }
 
+    /// Checks if the cartridge has battery-backed save support.
+    ///
+    /// Detects battery support based on the cartridge type code. Battery-backed
+    /// cartridges can persist RAM data between emulation sessions.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the cartridge supports battery saves, `false` otherwise.
     pub fn cart_battery(&self) -> bool {
         match self.rom_header.cart_type {
             0x03 | 0x06 | 0x09 | 0x0D | // MBC1+RAM+BATTERY, MBC2+BATTERY, ROM+RAM+BATTERY, MMM01+RAM+BATTERY
@@ -737,12 +893,28 @@ impl Cartridge {
         }
     }
 
+    /// Checks if the cartridge uses MBC1 memory bank controller.
+    ///
+    /// MBC1 supports 5-bit ROM banking (banks 1-31) and 2-bit RAM banking
+    /// (banks 0-3) with mode selection for simple or advanced banking.
+    ///
+    /// # Returns
+    ///
+    /// `true` for MBC1 cartridge types (0x01-0x03), `false` otherwise.
     pub fn cart_mbc1(&self) -> bool {
         self.rom_header.cart_type == 0x01
             || self.rom_header.cart_type == 0x02
             || self.rom_header.cart_type == 0x03
     }
 
+    /// Checks if the cartridge uses MBC3 memory bank controller.
+    ///
+    /// MBC3 supports 7-bit ROM banking (banks 1-127), 4 RAM banks, and
+    /// optional real-time clock functionality.
+    ///
+    /// # Returns
+    ///
+    /// `true` for MBC3 cartridge types (0x0F-0x13), `false` otherwise.
     pub fn cart_mbc3(&self) -> bool {
         match self.rom_header.cart_type {
             0x0F | 0x10 | 0x11 | 0x12 | 0x13 => true,
@@ -750,6 +922,14 @@ impl Cartridge {
         }
     }
 
+    /// Checks if the cartridge has real-time clock support.
+    ///
+    /// RTC-enabled cartridges (MBC3 with timer) provide seconds, minutes,
+    /// hours, and day counters that continue running based on system time.
+    ///
+    /// # Returns
+    ///
+    /// `true` for MBC3 cartridges with RTC (0x0F-0x10), `false` otherwise.
     pub fn cart_has_rtc(&self) -> bool {
         match self.rom_header.cart_type {
             0x0F | 0x10 => true, // MBC3+TIMER+BATTERY, MBC3+TIMER+RAM+BATTERY
@@ -757,10 +937,26 @@ impl Cartridge {
         }
     }
 
+    /// Checks if the cartridge uses MBC2 memory bank controller.
+    ///
+    /// MBC2 supports 4-bit ROM banking (banks 1-15) and has built-in
+    /// 512×4-bit RAM (256 bytes addressable).
+    ///
+    /// # Returns
+    ///
+    /// `true` for MBC2 cartridge types (0x05-0x06), `false` otherwise.
     pub fn cart_mbc2(&self) -> bool {
         self.rom_header.cart_type == 0x05 || self.rom_header.cart_type == 0x06
     }
 
+    /// Checks if the cartridge uses MBC5 memory bank controller.
+    ///
+    /// MBC5 supports 9-bit ROM banking (banks 0-511) and 4-bit RAM banking
+    /// (banks 0-15). Used in later Game Boy games including Pokemon Gold/Silver.
+    ///
+    /// # Returns
+    ///
+    /// `true` for MBC5 cartridge types (0x19-0x1E), `false` otherwise.
     pub fn cart_mbc5(&self) -> bool {
         match self.rom_header.cart_type {
             0x19 | 0x1A | 0x1B | 0x1C | 0x1D | 0x1E => true, // MBC5, MBC5+RAM, MBC5+RAM+BATTERY, MBC5+RUMBLE, MBC5+RUMBLE+RAM, MBC5+RUMBLE+RAM+BATTERY
@@ -768,7 +964,13 @@ impl Cartridge {
         }
     }
 
-    // Update RTC registers based on elapsed time
+    /// Updates RTC registers based on elapsed system time.
+    ///
+    /// Calculates time elapsed since last update and increments RTC registers
+    /// (seconds, minutes, hours, days) accordingly. Handles overflow and carry
+    /// flags for the 9-bit day counter.
+    ///
+    /// Called periodically during emulation for MBC3 cartridges with RTC support.
     fn update_rtc_time(&mut self) {
         if !self.cart_has_rtc() {
             return;
@@ -828,7 +1030,11 @@ impl Cartridge {
 }
 
 impl CartridgeHeader {
-    // Constructor
+    /// Creates a new cartridge header with default zero values.
+    ///
+    /// # Returns
+    ///
+    /// A new `CartridgeHeader` with all fields initialized to zero.
     pub fn new() -> CartridgeHeader {
         let cartridge_header = CartridgeHeader {
             //entry_point: [0; 4],
@@ -847,7 +1053,14 @@ impl CartridgeHeader {
         };
         cartridge_header
     }
-    // Function to lookup publisher code
+    /// Looks up the publisher name from the new licensee code.
+    ///
+    /// Uses the new 16-bit licensee code to find the publisher name in the
+    /// NEW_LICENSEE_CODES lookup table.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&str)` with publisher name if found, `None` if code is unknown.
     fn new_license_lookup(&self) -> Option<&'static str> {
         match NEW_LICENSEE_CODES.get(&format!("{:02X}", self.old_lic_code).as_str()) {
             Some(&publisher) => Some(publisher),
@@ -855,7 +1068,14 @@ impl CartridgeHeader {
         }
     }
 
-    // Function to lookup cart type
+    /// Looks up the cartridge type description from the type code.
+    ///
+    /// Uses the cartridge type byte to find the hardware description (MBC type,
+    /// RAM, battery, etc.) in the ROM_TYPES lookup table.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&str)` with cartridge type description if found, `None` if unknown.
     fn cart_type_lookup(&self) -> Option<&'static str> {
         // Format the cart_type as a two-digit hexadecimal string
         let key = self.cart_type;
@@ -866,6 +1086,14 @@ impl CartridgeHeader {
         }
     }
 
+    /// Looks up the publisher name from the old licensee code.
+    ///
+    /// Uses the old 8-bit licensee code to find the publisher name in the
+    /// OLD_LICENSEE_CODES lookup table. Used for older Game Boy games.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&str)` with publisher name if found, `None` if code is unknown.
     fn old_license_lookup(&self) -> Option<&'static str> {
         match OLD_LICENSEE_CODES.get(&format!("{:02X}", self.old_lic_code).as_str()) {
             Some(&publisher) => Some(publisher),

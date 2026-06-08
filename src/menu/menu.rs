@@ -1,3 +1,38 @@
+/*
+  menu/menu.rs
+  Info: Main menu system for ROM selection and emulator configuration
+  Description: Implements a full-featured menu interface using SDL2 for ROM browsing,
+              color palette selection, and credits display. Features custom bitmap font
+              rendering, scrollable ROM lists with metadata, and smooth navigation.
+
+  Menu States:
+    - MainMenu: Initial screen with options for ROM selection, palette, and credits
+    - ROMSelection: Browsable list of game and test ROMs with metadata display
+    - PaletteSelection: Color palette chooser for display customization
+    - Credits: Scrolling credits screen
+    - ROMOpen: Signals that a ROM has been selected for loading
+
+  Navigation:
+    - Up/Down: Navigate through menu items and lists
+    - Left/Right: Switch between ROM tabs (Game/Test)
+    - Select: Choose current item
+    - Back: Return to previous menu state
+
+  Features:
+    - Custom bitmap font rendering for retro aesthetic
+    - ROM metadata display (file size, battery backup indicator)
+    - ROM cover art loading from filesystem
+    - Scrollable lists with automatic viewport management
+    - Smooth animations and visual feedback
+    - Alphabetically sorted ROM collections
+
+  Rendering:
+    - Uses SDL2 Surface for software rendering
+    - Custom 5x7 pixel bitmap font with scaling support
+    - Color-coded UI elements for visual hierarchy
+    - Centered layouts with responsive positioning
+*/
+
 use std::path::PathBuf;
 
 use sdl2::pixels::Color;
@@ -7,43 +42,89 @@ use sdl2::surface::Surface;
 use super::color_palette::ColorPalette;
 use super::rom_catalog::{ROMCatalog, ROM};
 
+/// Current state of the menu system with associated data.
+///
+/// Each variant represents a different screen or mode in the menu,
+/// with the contained data tracking the current selection or state.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuState {
+    /// Main menu screen with selected option index (0=ROMs, 1=Palette, 2=Credits)
     MainMenu(usize),
+    /// Credits screen with scroll position for animation
     Credits(f32),
+    /// ROM selection screen with current tab and selected index
     ROMSelection(ROMTab),
+    /// Palette selection screen with selected palette index
     PaletteSelection(usize),
+    /// ROM has been selected and is ready to load
     ROMOpen(ROM),
 }
 
+/// ROM tab type with current selection index.
+///
+/// Separates game ROMs from test ROMs for organized browsing.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ROMTab {
+    /// Game ROMs tab with selected index
     GameRoms(usize),
+    /// Test ROMs tab with selected index
     TestRoms(usize),
 }
 
+/// Main menu system managing UI state and rendering.
+///
+/// Handles all menu interactions including ROM browsing, palette selection,
+/// and navigation. Uses SDL2 for rendering with custom bitmap fonts.
 pub struct Menu {
+    /// Catalog of available ROM files
     pub rom_catalog: ROMCatalog,
+    /// Current menu state and selection
     pub current_state: MenuState,
+    /// Currently selected color palette
     pub current_palette: ColorPalette,
+    /// List of all available color palettes
     pub available_palettes: Vec<ColorPalette>,
+    /// Current scroll position in ROM list
     pub scroll_offset: usize,
+    /// Maximum number of ROMs visible at once
     pub max_visible_roms: usize,
+    /// Animation timer for visual effects
     pub animation_time: f32,
+    /// Debug mode flag
     pub debug: bool,
+    /// Screen width in pixels
     pub screen_width: u32,
+    /// Screen height in pixels
     pub screen_height: u32,
 }
 
+/// Menu implementation with navigation, rendering, and state management
 impl Menu {
-    // Colors for the menu theme
-    const BG_COLOR: Color = Color::RGB(20, 20, 30); // Dark blue background
-    const PRIMARY_COLOR: Color = Color::RGB(100, 200, 255); // Light blue for titles
-    const SECONDARY_COLOR: Color = Color::RGB(80, 160, 200); // Medium blue for text
-    const SELECTED_COLOR: Color = Color::RGB(255, 200, 100); // Orange for selected items
-    const BATTERY_COLOR: Color = Color::RGB(100, 255, 100); // Green for battery backed games
-    const CREDITS_COLOR: Color = Color::RGB(180, 180, 180); // Light gray for credits
+    /// Dark blue background color for menu
+    const BG_COLOR: Color = Color::RGB(20, 20, 30);
+    /// Light blue color for titles and headers
+    const PRIMARY_COLOR: Color = Color::RGB(100, 200, 255);
+    /// Medium blue color for secondary text
+    const SECONDARY_COLOR: Color = Color::RGB(80, 160, 200);
+    /// Orange color for selected/highlighted items
+    const SELECTED_COLOR: Color = Color::RGB(255, 200, 100);
+    /// Green color indicating battery-backed save support
+    const BATTERY_COLOR: Color = Color::RGB(100, 255, 100);
+    /// Light gray color for credits text
+    const CREDITS_COLOR: Color = Color::RGB(180, 180, 180);
 
+    /// Creates a new menu instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `rom_dir` - Base directory containing ROM subdirectories
+    /// * `screen_width` - Width of the display surface in pixels
+    /// * `screen_height` - Height of the display surface in pixels
+    /// * `debug` - Enable debug mode features
+    ///
+    /// # Returns
+    ///
+    /// A new `Menu` initialized to the main menu state with default palette.
     pub fn new(rom_dir: PathBuf, screen_width: u32, screen_height: u32, debug: bool) -> Self {
         Menu {
             rom_catalog: ROMCatalog::new(&rom_dir),
@@ -59,10 +140,19 @@ impl Menu {
         }
     }
 
+    /// Updates animation timers.
+    ///
+    /// # Arguments
+    ///
+    /// * `delta_time` - Time elapsed since last update in seconds
     pub fn update(&mut self, delta_time: f32) {
         self.animation_time += delta_time;
     }
 
+    /// Navigates up in the current menu or list.
+    ///
+    /// Moves selection up by one item. In ROM lists, automatically adjusts
+    /// scroll offset to keep selection visible.
     pub fn navigate_up(&mut self) {
         match &mut self.current_state {
             MenuState::MainMenu(idx) => {
@@ -97,6 +187,10 @@ impl Menu {
         }
     }
 
+    /// Navigates down in the current menu or list.
+    ///
+    /// Moves selection down by one item. In ROM lists, automatically adjusts
+    /// scroll offset to keep selection visible.
     pub fn navigate_down(&mut self) {
         match &mut self.current_state {
             MenuState::MainMenu(idx) => {
@@ -134,6 +228,10 @@ impl Menu {
         }
     }
 
+    /// Switches between ROM tabs (Game/Test) in ROM selection screen.
+    ///
+    /// Toggles between GameRoms and TestRoms tabs, resetting selection to index 0.
+    /// Only active in ROM selection state.
     pub fn navigate_horizontal(&mut self) {
         match &mut self.current_state {
             MenuState::ROMSelection(tab) => match tab {
@@ -148,6 +246,12 @@ impl Menu {
         }
     }
 
+    /// Selects the currently highlighted menu item.
+    ///
+    /// Behavior depends on current menu state:
+    /// - MainMenu: Navigate to ROM selection, palette selection, or credits
+    /// - ROMSelection: Open the selected ROM
+    /// - PaletteSelection: Apply the selected color palette
     pub fn select(&mut self) {
         match &self.current_state {
             MenuState::MainMenu(idx) => {
@@ -193,6 +297,10 @@ impl Menu {
         }
     }
 
+    /// Navigates back to the previous menu state.
+    ///
+    /// Returns to main menu from most screens, or returns to ROM selection
+    /// from ROM open state with the previously selected ROM highlighted.
     pub fn back(&mut self) {
         match &self.current_state {
             MenuState::Credits(_) => {
@@ -215,6 +323,11 @@ impl Menu {
         }
     }
 
+    /// Returns all ROMs for the currently selected tab.
+    ///
+    /// # Returns
+    ///
+    /// Vector of ROM references for the active tab, or empty vector if not in ROM selection.
     pub fn get_tab_roms(&self) -> Vec<&ROM> {
         match &self.current_state {
             MenuState::ROMSelection(tab) => match tab {
@@ -225,6 +338,11 @@ impl Menu {
         }
     }
 
+    /// Returns the currently visible ROMs with their indices.
+    ///
+    /// # Returns
+    ///
+    /// Vector of (index, ROM) tuples for ROMs within the current scroll window.
     pub fn get_visible_roms(&self) -> Vec<(usize, &ROM)> {
         self.get_tab_roms()
             .into_iter()
@@ -233,6 +351,12 @@ impl Menu {
             .take(self.max_visible_roms)
             .collect()
     }
+
+    /// Returns the currently selected ROM tab.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&ROMTab)` if in ROM selection state, `None` otherwise.
     pub fn get_selected_rom_tab(&self) -> Option<&ROMTab> {
         // Get the currently selected tab
         return match &self.current_state {
@@ -241,6 +365,11 @@ impl Menu {
         };
     }
 
+    /// Returns the index of the currently selected ROM.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&usize)` with the selected ROM index if in ROM selection, `None` otherwise.
     pub fn get_selected_rom_idx(&self) -> Option<&usize> {
         // Get the currently selected tab
         let current_tab = self.get_selected_rom_tab()?;
@@ -252,6 +381,11 @@ impl Menu {
         };
     }
 
+    /// Returns the currently selected ROM.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&ROM)` if a ROM is selected, `None` if not in ROM selection state.
     pub fn get_selected_rom(&self) -> Option<&ROM> {
         // Get the currently selected tab
         let current_tab = self.get_selected_rom_tab()?;
@@ -260,6 +394,11 @@ impl Menu {
         self.rom_catalog.get_rom(current_tab)
     }
 
+    /// Returns the index of the currently selected palette.
+    ///
+    /// # Returns
+    ///
+    /// `Some(usize)` if in palette selection state, `None` otherwise.
     pub fn get_selected_palette_idx(&self) -> Option<usize> {
         match self.current_state {
             MenuState::PaletteSelection(idx) => Some(idx),
@@ -267,6 +406,13 @@ impl Menu {
         }
     }
 
+    /// Renders the menu to the provided surface.
+    ///
+    /// Clears the background and renders the appropriate screen based on current state.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
     pub fn render(&mut self, surface: &mut Surface) {
         // Clear background
         surface.fill_rect(None, Self::BG_COLOR).unwrap();
@@ -281,6 +427,19 @@ impl Menu {
         }
     }
 
+    /// Renders the main menu screen with title and options.
+    ///
+    /// Displays the RustedROM ASCII art title, subtitle, and three menu options:
+    /// - ROM Selection: Browse and load game ROMs
+    /// - Palette Selection: Choose display color scheme
+    /// - Credits: View project information
+    ///
+    /// The currently selected option is highlighted with arrows and orange color.
+    /// Also displays the current palette selection and control hints at the bottom.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render the main menu to
     fn render_main_menu(&self, surface: &mut Surface) {
         let center_x = self.screen_width as i32 / 2;
         let center_y = self.screen_height as i32 / 2;
@@ -384,6 +543,14 @@ impl Menu {
         );
     }
 
+    /// Renders the credits screen with project information.
+    ///
+    /// Displays creator information, features list, acknowledgments, and thanks.
+    /// Content is statically positioned with consistent spacing for readability.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render the credits to
     fn render_credits(&self, surface: &mut Surface) {
         let center_x = self.screen_width as i32 / 2;
 
@@ -508,6 +675,15 @@ impl Menu {
         );
     }
 
+    /// Renders the ROM selection screen with game list and info panel.
+    ///
+    /// Displays a split-screen layout:
+    /// - Left side (60%): Scrollable list of ROMs with tabs for Games/Test ROMs
+    /// - Right side (40%): Selected ROM information and cover art preview
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render the ROM selection screen to
     fn render_game_selection(&self, surface: &mut Surface) {
         // Split screen: left side for game list, right side for game info
         let split_x = self.screen_width * 3 / 5; // 60% for game list, 40% for info
@@ -602,6 +778,15 @@ impl Menu {
         );
     }
 
+    /// Renders the scrollable ROM list on the left side of the screen.
+    ///
+    /// Displays up to `max_visible_roms` at a time with scroll indicators.
+    /// The currently selected ROM is highlighted with an arrow and color.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `split_x` - X coordinate where the list area ends
     fn render_rom_list(&self, surface: &mut Surface, split_x: u32) {
         let list_x = 20;
         let start_y = 100; // Increased to make room for tabs
@@ -620,12 +805,8 @@ impl Menu {
 
         if visible_roms.is_empty() {
             let empty_message = match current_tab {
-                ROMTab::GameRoms(_) => {
-                    "No game ROMs found in 'roms/game_roms/'"
-                }
-                ROMTab::TestRoms(_) => {
-                    "No test ROMs found in 'roms/test_roms'"
-                }
+                ROMTab::GameRoms(_) => "No game ROMs found in 'roms/game_roms/'",
+                ROMTab::TestRoms(_) => "No test ROMs found in 'roms/test_roms'",
             };
             self.draw_text(
                 surface,
@@ -694,6 +875,15 @@ impl Menu {
         }
     }
 
+    /// Renders ROM information panel on the right side of the screen.
+    ///
+    /// Displays selected ROM metadata including name, file size, save support,
+    /// and attempts to load and display cover art if available.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `split_x` - X coordinate where the info panel starts
     fn render_rom_info(&self, surface: &mut Surface, split_x: u32) {
         let info_x = split_x as i32 + 20;
         let start_y = 80;
@@ -790,6 +980,18 @@ impl Menu {
         }
     }
 
+    /// Cleans ROM name for image filename matching.
+    ///
+    /// Converts name to lowercase, replaces special characters with underscores,
+    /// and trims leading/trailing underscores.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - ROM filename to clean
+    ///
+    /// # Returns
+    ///
+    /// Cleaned string suitable for image filename matching
     fn clean_name_for_image(&self, name: &str) -> String {
         // Clean the game name to match potential image filenames
         name.chars()
@@ -802,6 +1004,22 @@ impl Menu {
             .to_string()
     }
 
+    /// Attempts to load and render ROM cover art image.
+    ///
+    /// Searches for image files in `roms/imgs/` directory matching the ROM name.
+    /// Tries multiple filename variations and formats (.jpg, .png).
+    /// Scales and centers the image within the provided rectangle.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `rom` - ROM to find cover art for
+    /// * `rect` - Rectangle to render the image within
+    /// * `debug` - Enable debug output for image loading
+    ///
+    /// # Returns
+    ///
+    /// `true` if image was successfully loaded and rendered, `false` otherwise
     fn try_render_rom_image(
         &self,
         surface: &mut Surface,
@@ -1005,6 +1223,15 @@ impl Menu {
         false
     }
 
+    /// Draws the RustedROM ASCII art title.
+    ///
+    /// Renders multi-line ASCII art title centered at the specified position.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `center_x` - X coordinate for horizontal centering
+    /// * `center_y` - Y coordinate for vertical centering
     fn draw_title_text(&self, surface: &mut Surface, center_x: i32, center_y: i32) {
         // ASCII art style title using standard ASCII characters
         let title_lines = vec![
@@ -1046,6 +1273,16 @@ impl Menu {
         }
     }
 
+    /// Draws text centered horizontally at the specified position.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `text` - Text string to render
+    /// * `center_x` - X coordinate for horizontal centering
+    /// * `y` - Y coordinate for text baseline
+    /// * `color` - Text color
+    /// * `scale` - Scale factor for text size
     fn draw_text_centered(
         &self,
         surface: &mut Surface,
@@ -1061,6 +1298,16 @@ impl Menu {
         self.draw_text(surface, text, x, y, color, scale);
     }
 
+    /// Draws text at the specified position using bitmap font.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `text` - Text string to render
+    /// * `x` - X coordinate for text start
+    /// * `y` - Y coordinate for text baseline
+    /// * `color` - Text color
+    /// * `scale` - Scale factor for text size
     fn draw_text(
         &self,
         surface: &mut Surface,
@@ -1078,6 +1325,19 @@ impl Menu {
         }
     }
 
+    /// Draws a single character using 5x7 bitmap font.
+    ///
+    /// Renders characters from a built-in bitmap font definition.
+    /// Supports uppercase letters, numbers, and common symbols.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `ch` - Character to render
+    /// * `x` - X coordinate for character
+    /// * `y` - Y coordinate for character
+    /// * `color` - Character color
+    /// * `scale` - Scale factor for character size
     fn draw_char(&self, surface: &mut Surface, ch: char, x: i32, y: i32, color: Color, scale: u32) {
         // Character bitmap patterns (5x7 pixel patterns)
         let char_width = 6 * scale;
@@ -1657,6 +1917,15 @@ impl Menu {
         }
     }
 
+    /// Renders the palette selection screen.
+    ///
+    /// Displays all available color palettes with preview swatches.
+    /// The currently selected palette is highlighted, and the active palette
+    /// is shown in green. Each palette shows 4 color preview boxes.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
     fn render_palette_selection(&self, surface: &mut Surface) {
         let center_x = self.screen_width as i32 / 2;
 
@@ -1763,6 +2032,16 @@ impl Menu {
         );
     }
 
+    /// Draws a 1-pixel border around a rectangle.
+    ///
+    /// SDL2 doesn't provide a direct border function, so this draws
+    /// four 1-pixel lines to create the border effect.
+    ///
+    /// # Arguments
+    ///
+    /// * `surface` - SDL2 surface to render to
+    /// * `rect` - Rectangle to draw border around
+    /// * `color` - Border color
     fn draw_rect_border(&self, surface: &mut Surface, rect: Rect, color: Color) {
         // Draw border lines manually since SDL2 doesn't have a direct border function
         // Top line

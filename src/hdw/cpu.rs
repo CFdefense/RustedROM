@@ -57,7 +57,7 @@
 
 use crate::hdw::bus::BUS;
 use crate::hdw::cpu_ops::*;
-use crate::hdw::debug_timer::log_timer_state;
+use crate::hdw::debug::log_timer_state;
 use crate::hdw::instructions::*;
 use crate::hdw::interrupts::*;
 use crate::hdw::registers::*;
