@@ -10,17 +10,34 @@
     - Channel 4: Noise
 */
 
-// Audio channel envelope for volume control
+/// Audio channel envelope for automatic volume control.
+///
+/// Controls volume fade-in/fade-out effects for square wave and noise channels.
+/// The envelope can increase or decrease volume over time based on the step length.
 #[derive(Debug, Clone)]
 pub struct Envelope {
+    /// Initial volume level (0-15) set when the envelope is triggered.
     pub initial_volume: u8,
-    pub direction: bool, // true = increase, false = decrease
+
+    /// Envelope direction - true for volume increase, false for decrease.
+    pub direction: bool,
+
+    /// Number of envelope steps (0-7) - 0 disables envelope.
     pub step_length: u8,
+
+    /// Current volume level (0-15).
     pub volume: u8,
+
+    /// Internal timer counting down to next volume change.
     pub timer: u8,
 }
 
 impl Envelope {
+    /// Creates a new envelope with default values (volume 0, disabled).
+    ///
+    /// # Returns
+    ///
+    /// A new `Envelope` instance with all fields set to zero.
     pub fn new() -> Self {
         Envelope {
             initial_volume: 0,
@@ -31,11 +48,20 @@ impl Envelope {
         }
     }
 
+    /// Triggers the envelope, resetting volume and timer.
+    ///
+    /// Called when a sound channel is triggered to start the envelope from
+    /// its initial state.
     pub fn trigger(&mut self) {
         self.volume = self.initial_volume;
         self.timer = self.step_length;
     }
 
+    /// Advances the envelope by one step.
+    ///
+    /// Decrements the timer and updates volume when the timer reaches zero.
+    /// Volume increases or decreases based on direction, clamped to 0-15 range.
+    /// Called at 64 Hz by the frame sequencer.
     pub fn tick(&mut self) {
         if self.step_length == 0 {
             return;
@@ -57,17 +83,33 @@ impl Envelope {
     }
 }
 
-// Length timer for automatic channel shutdown
+/// Length timer for automatic channel shutdown.
+///
+/// Counts down from an initial length value and disables the channel when
+/// it reaches zero. Used to create sound effects with automatic cutoff.
 #[derive(Debug, Clone)]
 pub struct LengthTimer {
-    pub length: u16, // Changed to u16 to accommodate 256 - value
+    /// Current length counter value (counts down to 0).
+    pub length: u16,
+
+    /// Whether length timer is enabled - when true, channel stops at length=0.
     pub enabled: bool,
-    pub max_length: u16, // Changed to u16 to accommodate 256
+
+    /// Maximum length value for this channel (64 for square/noise, 256 for wave).
+    pub max_length: u16,
 }
 
 impl LengthTimer {
+    /// Creates a new length timer with the specified maximum length.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_length` - Maximum length value (64 for square/noise, 256 for wave)
+    ///
+    /// # Returns
+    ///
+    /// A new `LengthTimer` instance with length=0 and disabled.
     pub fn new(max_length: u16) -> Self {
-        // Changed parameter to u16
         LengthTimer {
             length: 0,
             enabled: false,
@@ -75,12 +117,24 @@ impl LengthTimer {
         }
     }
 
+    /// Triggers the length timer, setting it to max if currently zero.
+    ///
+    /// Called when a sound channel is triggered. If length is 0, sets it to
+    /// the maximum length value.
     pub fn trigger(&mut self) {
         if self.length == 0 {
             self.length = self.max_length; // Now both are u16
         }
     }
 
+    /// Advances the length timer by one step.
+    ///
+    /// Decrements the length counter if enabled and non-zero. Called at 256 Hz
+    /// by the frame sequencer.
+    ///
+    /// # Returns
+    ///
+    /// `true` if length reached zero (channel should be disabled), `false` otherwise.
     pub fn tick(&mut self) -> bool {
         if self.enabled && self.length > 0 {
             self.length -= 1;
@@ -91,18 +145,37 @@ impl LengthTimer {
     }
 }
 
-// Frequency sweep for Channel 1
+/// Frequency sweep for automatic pitch changes (Channel 1 only).
+///
+/// Periodically modifies the channel's frequency by adding or subtracting
+/// a fraction of the current frequency, creating pitch bend effects.
 #[derive(Debug, Clone)]
 pub struct FrequencySweep {
+    /// Frequency shift amount (0-7) - frequency changes by freq >> shift.
     pub shift: u8,
-    pub direction: bool, // true = increase, false = decrease
+
+    /// Sweep direction - true for frequency increase, false for decrease.
+    pub direction: bool,
+
+    /// Sweep time period (0-7) - time between frequency updates.
     pub time: u8,
+
+    /// Internal timer counting down to next frequency update.
     pub timer: u8,
+
+    /// Whether sweep is currently active.
     pub enabled: bool,
+
+    /// Shadow copy of frequency used for sweep calculations.
     pub shadow_frequency: u16,
 }
 
 impl FrequencySweep {
+    /// Creates a new frequency sweep with default values (disabled).
+    ///
+    /// # Returns
+    ///
+    /// A new `FrequencySweep` instance with all fields set to zero/false.
     pub fn new() -> Self {
         FrequencySweep {
             shift: 0,
@@ -114,12 +187,25 @@ impl FrequencySweep {
         }
     }
 
+    /// Triggers the frequency sweep with the given initial frequency.
+    ///
+    /// # Arguments
+    ///
+    /// * `frequency` - Initial frequency value to use for sweep calculations
     pub fn trigger(&mut self, frequency: u16) {
         self.shadow_frequency = frequency;
         self.timer = if self.time > 0 { self.time } else { 8 };
         self.enabled = self.time > 0 || self.shift > 0;
     }
 
+    /// Advances the frequency sweep by one step.
+    ///
+    /// Calculates new frequency if sweep is enabled and timer expires.
+    /// Called at 128 Hz by the frame sequencer.
+    ///
+    /// # Returns
+    ///
+    /// `Some(new_frequency)` if frequency was updated, `None` otherwise.
     pub fn tick(&mut self) -> Option<u16> {
         if self.timer > 0 {
             self.timer -= 1;
@@ -139,6 +225,11 @@ impl FrequencySweep {
         None
     }
 
+    /// Calculates the next frequency value based on sweep parameters.
+    ///
+    /// # Returns
+    ///
+    /// New frequency value with sweep applied, saturating at u16 bounds.
     fn calculate_frequency(&self) -> u16 {
         let offset = self.shadow_frequency >> self.shift;
         if self.direction {
@@ -149,23 +240,50 @@ impl FrequencySweep {
     }
 }
 
-// Square/Pulse wave channel (CH1 and CH2)
+/// Square wave channel for pulse wave synthesis (Channels 1 and 2).
+///
+/// Generates square waves with configurable duty cycle (12.5%, 25%, 50%, 75%).
+/// Channel 1 includes frequency sweep, Channel 2 does not.
 #[derive(Debug, Clone)]
 pub struct SquareChannel {
+    /// Whether the channel is currently playing.
     pub enabled: bool,
-    pub dac_enabled: bool,
-    pub frequency: u16,
-    pub duty_cycle: u8,
-    pub envelope: Envelope,
-    pub length_timer: LengthTimer,
-    pub sweep: Option<FrequencySweep>, // Only CH1 has sweep
 
-    // Internal state
+    /// Whether the Digital-to-Analog Converter is enabled.
+    pub dac_enabled: bool,
+
+    /// Frequency value (0-2047) - higher values = higher pitch.
+    pub frequency: u16,
+
+    /// Duty cycle pattern (0-3): 12.5%, 25%, 50%, 75%.
+    pub duty_cycle: u8,
+
+    /// Volume envelope for automatic volume control.
+    pub envelope: Envelope,
+
+    /// Length timer for automatic channel shutdown.
+    pub length_timer: LengthTimer,
+
+    /// Frequency sweep (Some for CH1, None for CH2).
+    pub sweep: Option<FrequencySweep>,
+
+    /// Internal frequency timer for waveform generation.
     pub frequency_timer: u16,
+
+    /// Current position in duty cycle pattern (0-7).
     pub duty_position: u8,
 }
 
 impl SquareChannel {
+    /// Creates a new square wave channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `has_sweep` - true for Channel 1 (with sweep), false for Channel 2
+    ///
+    /// # Returns
+    ///
+    /// A new `SquareChannel` instance with default values.
     pub fn new(has_sweep: bool) -> Self {
         SquareChannel {
             enabled: false,
@@ -184,6 +302,10 @@ impl SquareChannel {
         }
     }
 
+    /// Triggers the channel to start playing.
+    ///
+    /// Resets all timers and enables the channel. Called when bit 7 of
+    /// NRx4 register is written.
     pub fn trigger(&mut self) {
         self.enabled = true;
         self.length_timer.trigger();
@@ -196,6 +318,10 @@ impl SquareChannel {
         self.frequency_timer = (2048 - self.frequency) * 4;
     }
 
+    /// Advances the channel waveform by one CPU cycle.
+    ///
+    /// Updates the frequency timer and duty position to generate the
+    /// square wave output.
     pub fn step(&mut self) {
         if self.frequency_timer > 0 {
             self.frequency_timer -= 1;
@@ -205,6 +331,12 @@ impl SquareChannel {
         }
     }
 
+    /// Gets the current audio output sample.
+    ///
+    /// # Returns
+    ///
+    /// Current volume (0-15) based on duty cycle position and envelope,
+    /// or 0 if channel is disabled.
     pub fn get_output(&self) -> u8 {
         if !self.enabled || !self.dac_enabled {
             return 0;
@@ -227,16 +359,25 @@ impl SquareChannel {
         }
     }
 
+    /// Processes one length timer tick.
+    ///
+    /// Disables the channel if length timer expires. Called at 256 Hz.
     pub fn length_tick(&mut self) {
         if self.length_timer.tick() {
             self.enabled = false;
         }
     }
 
+    /// Processes one envelope tick.
+    ///
+    /// Updates volume based on envelope settings. Called at 64 Hz.
     pub fn envelope_tick(&mut self) {
         self.envelope.tick();
     }
 
+    /// Processes one sweep tick (Channel 1 only).
+    ///
+    /// Updates frequency based on sweep settings. Called at 128 Hz.
     pub fn sweep_tick(&mut self) {
         if let Some(sweep) = &mut self.sweep {
             if let Some(new_freq) = sweep.tick() {
@@ -246,22 +387,43 @@ impl SquareChannel {
     }
 }
 
-// Wave channel (CH3)
+/// Wave channel for custom waveform synthesis (Channel 3).
+///
+/// Plays arbitrary 4-bit waveforms stored in wave RAM. Supports 32 samples
+/// (16 bytes, 2 samples per byte) with configurable volume levels.
 #[derive(Debug, Clone)]
 pub struct WaveChannel {
+    /// Whether the channel is currently playing.
     pub enabled: bool,
+
+    /// Whether the Digital-to-Analog Converter is enabled.
     pub dac_enabled: bool,
+
+    /// Frequency value (0-2047) - higher values = higher pitch.
     pub frequency: u16,
+
+    /// Volume level (0-3): mute, 100%, 50%, 25%.
     pub volume: u8,
+
+    /// Length timer for automatic channel shutdown.
     pub length_timer: LengthTimer,
+
+    /// Wave RAM containing 32 4-bit samples (16 bytes).
     pub wave_ram: [u8; 16],
 
-    // Internal state
+    /// Internal frequency timer for sample playback.
     pub frequency_timer: u16,
+
+    /// Current position in wave RAM (0-31).
     pub wave_position: u8,
 }
 
 impl WaveChannel {
+    /// Creates a new wave channel with default values.
+    ///
+    /// # Returns
+    ///
+    /// A new `WaveChannel` instance with zeroed wave RAM and disabled state.
     pub fn new() -> Self {
         WaveChannel {
             enabled: false,
@@ -275,6 +437,9 @@ impl WaveChannel {
         }
     }
 
+    /// Triggers the channel to start playing.
+    ///
+    /// Resets timers and wave position. Called when bit 7 of NR34 is written.
     pub fn trigger(&mut self) {
         self.enabled = true;
         self.length_timer.trigger();
@@ -282,6 +447,9 @@ impl WaveChannel {
         self.wave_position = 0;
     }
 
+    /// Advances the channel waveform by one CPU cycle.
+    ///
+    /// Updates the frequency timer and wave position to play through wave RAM.
     pub fn step(&mut self) {
         if self.frequency_timer > 0 {
             self.frequency_timer -= 1;
@@ -291,6 +459,12 @@ impl WaveChannel {
         }
     }
 
+    /// Gets the current audio output sample.
+    ///
+    /// # Returns
+    ///
+    /// Current sample from wave RAM (0-15) scaled by volume setting,
+    /// or 0 if channel is disabled.
     pub fn get_output(&self) -> u8 {
         if !self.enabled || !self.dac_enabled {
             return 0;
@@ -312,6 +486,9 @@ impl WaveChannel {
         }
     }
 
+    /// Processes one length timer tick.
+    ///
+    /// Disables the channel if length timer expires. Called at 256 Hz.
     pub fn length_tick(&mut self) {
         if self.length_timer.tick() {
             self.enabled = false;
@@ -319,23 +496,46 @@ impl WaveChannel {
     }
 }
 
-// Noise channel (CH4)
+/// Noise channel for pseudo-random noise generation (Channel 4).
+///
+/// Generates white noise using a Linear Feedback Shift Register (LFSR).
+/// Supports both 15-bit (white noise) and 7-bit (periodic noise) modes.
 #[derive(Debug, Clone)]
 pub struct NoiseChannel {
+    /// Whether the channel is currently playing.
     pub enabled: bool,
+
+    /// Whether the Digital-to-Analog Converter is enabled.
     pub dac_enabled: bool,
+
+    /// Clock shift for frequency control (0-15).
     pub clock_shift: u8,
-    pub width_mode: bool, // false = 15-bit, true = 7-bit
+
+    /// LFSR width mode - false for 15-bit (white noise), true for 7-bit (periodic).
+    pub width_mode: bool,
+
+    /// Divisor code for frequency calculation (0-7).
     pub divisor_code: u8,
+
+    /// Volume envelope for automatic volume control.
     pub envelope: Envelope,
+
+    /// Length timer for automatic channel shutdown.
     pub length_timer: LengthTimer,
 
-    // Internal state
+    /// Internal frequency timer for LFSR updates.
     pub frequency_timer: u16,
+
+    /// Linear Feedback Shift Register for noise generation.
     pub lfsr: u16,
 }
 
 impl NoiseChannel {
+    /// Creates a new noise channel with default values.
+    ///
+    /// # Returns
+    ///
+    /// A new `NoiseChannel` instance with LFSR initialized to 0x7FFF.
     pub fn new() -> Self {
         NoiseChannel {
             enabled: false,
@@ -350,6 +550,9 @@ impl NoiseChannel {
         }
     }
 
+    /// Triggers the channel to start playing.
+    ///
+    /// Resets LFSR and timers. Called when bit 7 of NR44 is written.
     pub fn trigger(&mut self) {
         self.enabled = true;
         self.length_timer.trigger();
@@ -364,6 +567,9 @@ impl NoiseChannel {
         self.frequency_timer = divisor << self.clock_shift;
     }
 
+    /// Advances the noise generator by one CPU cycle.
+    ///
+    /// Updates the frequency timer and LFSR to generate pseudo-random noise.
     pub fn step(&mut self) {
         if self.frequency_timer > 0 {
             self.frequency_timer -= 1;
@@ -384,6 +590,12 @@ impl NoiseChannel {
         }
     }
 
+    /// Gets the current audio output sample.
+    ///
+    /// # Returns
+    ///
+    /// Current volume (0-15) based on LFSR bit 0 and envelope,
+    /// or 0 if channel is disabled.
     pub fn get_output(&self) -> u8 {
         if !self.enabled || !self.dac_enabled {
             return 0;
@@ -396,41 +608,75 @@ impl NoiseChannel {
         }
     }
 
+    /// Processes one length timer tick.
+    ///
+    /// Disables the channel if length timer expires. Called at 256 Hz.
     pub fn length_tick(&mut self) {
         if self.length_timer.tick() {
             self.enabled = false;
         }
     }
 
+    /// Processes one envelope tick.
+    ///
+    /// Updates volume based on envelope settings. Called at 64 Hz.
     pub fn envelope_tick(&mut self) {
         self.envelope.tick();
     }
 }
 
-// Main APU struct
+/// Game Boy Audio Processing Unit (APU) managing all 4 sound channels.
+///
+/// Coordinates audio generation, mixing, and output for the Game Boy's sound system.
+/// Handles frame sequencing for envelope, length, and sweep timing at proper rates.
+/// Generates stereo audio samples at approximately 44.1kHz for output.
 pub struct AudioSystem {
+    /// Channel 1 - Square wave with frequency sweep.
     pub channel1: SquareChannel,
+
+    /// Channel 2 - Square wave without sweep.
     pub channel2: SquareChannel,
+
+    /// Channel 3 - Custom waveform from wave RAM.
     pub channel3: WaveChannel,
+
+    /// Channel 4 - Pseudo-random noise generator.
     pub channel4: NoiseChannel,
 
-    // Master controls
+    /// Master APU enable flag - disables all audio when false.
     pub master_enable: bool,
-    pub left_volume: u8,
-    pub right_volume: u8,
-    pub left_enables: u8,  // Which channels are enabled for left output
-    pub right_enables: u8, // Which channels are enabled for right output
 
-    // Frame sequencer for timing envelope, length, and sweep
+    /// Left output volume (0-7).
+    pub left_volume: u8,
+
+    /// Right output volume (0-7).
+    pub right_volume: u8,
+
+    /// Left channel enables - bit mask for channels 1-4.
+    pub left_enables: u8,
+
+    /// Right channel enables - bit mask for channels 1-4.
+    pub right_enables: u8,
+
+    /// Frame sequencer step counter (0-7) for timing control.
     pub frame_sequencer: u8,
+
+    /// Frame sequencer timer - counts down from 8192 (512 Hz).
     pub frame_sequencer_timer: u16,
 
-    // Sample buffer for audio output
+    /// Sample buffer for generated audio output (stereo interleaved).
     pub sample_buffer: Vec<f32>,
+
+    /// Sample rate counter for ~44.1kHz sampling (counts to 95 CPU cycles).
     sample_rate_counter: u16,
 }
 
 impl AudioSystem {
+    /// Creates a new Audio Processing Unit with all channels initialized.
+    ///
+    /// # Returns
+    ///
+    /// A new `AudioSystem` with all channels disabled and empty sample buffer.
     pub fn new() -> Self {
         AudioSystem {
             channel1: SquareChannel::new(true),  // CH1 has sweep
@@ -449,6 +695,10 @@ impl AudioSystem {
         }
     }
 
+    /// Advances the APU by one CPU cycle.
+    ///
+    /// Steps the frame sequencer, all four channels, and generates audio samples
+    /// at approximately 44.1kHz. Called once per CPU cycle during emulation.
     pub fn tick(&mut self) {
         // Step frame sequencer (controls envelope, length, and sweep timing)
         if self.frame_sequencer_timer > 0 {
@@ -473,6 +723,11 @@ impl AudioSystem {
         }
     }
 
+    /// Generates one stereo audio sample and adds it to the buffer.
+    ///
+    /// Mixes all four channels according to left/right enables and master volume,
+    /// converts to f32 format, and adds to the sample buffer. Manages buffer size
+    /// to prevent unbounded growth.
     fn generate_sample(&mut self) {
         let (left_sample, right_sample) = self.get_sample_values();
 
@@ -490,6 +745,14 @@ impl AudioSystem {
         }
     }
 
+    /// Calculates current stereo sample values from all channels.
+    ///
+    /// Mixes enabled channels for left and right outputs, applies master volume,
+    /// and scales to 16-bit range.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (left_sample, right_sample) as i16 values.
     fn get_sample_values(&self) -> (i16, i16) {
         if !self.master_enable {
             return (0, 0);
@@ -540,6 +803,15 @@ impl AudioSystem {
         (left_sample, right_sample)
     }
 
+    /// Retrieves audio samples for output.
+    ///
+    /// Copies available samples from the internal buffer to the provided buffer,
+    /// filling any remaining space with silence. Removes copied samples from
+    /// the internal buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - Output buffer to fill with stereo f32 samples (interleaved)
     pub fn get_samples(&mut self, buffer: &mut [f32]) {
         let available = self.sample_buffer.len().min(buffer.len());
 
@@ -556,6 +828,10 @@ impl AudioSystem {
         }
     }
 
+    /// Advances the frame sequencer by one step.
+    ///
+    /// Controls timing for length counters (256 Hz), envelopes (64 Hz), and
+    /// sweep (128 Hz). Called at 512 Hz (every 8192 CPU cycles).
     fn tick_frame_sequencer(&mut self) {
         // Length counter (ticked at 256 Hz)
         if self.frame_sequencer % 2 == 0 {
@@ -580,7 +856,18 @@ impl AudioSystem {
         self.frame_sequencer = (self.frame_sequencer + 1) % 8;
     }
 
-    // Register read/write functions
+    /// Reads an APU hardware register.
+    ///
+    /// Handles all audio registers from 0xFF10-0xFF3F including channel controls,
+    /// master volume/panning, and wave RAM. Returns 0xFF for invalid addresses.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to read (0xFF10-0xFF3F)
+    ///
+    /// # Returns
+    ///
+    /// The current value of the specified register
     pub fn read_register(&self, address: u16) -> u8 {
         match address {
             // Channel 1 registers
@@ -704,6 +991,16 @@ impl AudioSystem {
         }
     }
 
+    /// Writes to an APU hardware register.
+    ///
+    /// Handles all audio registers from 0xFF10-0xFF3F including channel controls,
+    /// master volume/panning, and wave RAM. Writes are ignored when APU is disabled
+    /// except for NR52 (master control).
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to write (0xFF10-0xFF3F)
+    /// * `value` - Value to write to the register
     pub fn write_register(&mut self, address: u16, value: u8) {
         if !self.master_enable && address != 0xFF26 {
             return; // Can only write to NR52 when APU is disabled
@@ -868,6 +1165,10 @@ impl AudioSystem {
         }
     }
 
+    /// Resets all audio channels and master controls.
+    ///
+    /// Called when the APU is disabled via NR52. Reinitializes all channels
+    /// to their default state and clears volume/panning settings.
     fn reset_all_channels(&mut self) {
         self.channel1 = SquareChannel::new(true);
         self.channel2 = SquareChannel::new(false);

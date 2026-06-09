@@ -1,61 +1,47 @@
-/*
-  hdw/io.rs
-  Info: I/O register interface for Game Boy hardware components
-  Description: The io module implements memory-mapped I/O register access for all Game Boy hardware.
-              Provides centralized register read/write functionality with proper component routing
-              and debug capabilities for development and testing.
+// hdw/io.rs
+// I/O register interface for Game Boy hardware components
+//
+// The io module implements memory-mapped I/O register access for all Game Boy hardware.
+// Provides centralized register read/write functionality with proper component routing
+// and debug capabilities for development and testing.
+//
+// # I/O Register Map
+//
+// - 0xFF00: Joypad Register - Input controller for D-pad and button states
+// - 0xFF01-0xFF02: Serial Data - Serial communication transfer buffer and control
+// - 0xFF04-0xFF07: Timer Registers - Programmable timer with divider and control
+// - 0xFF0F: Interrupt Flags - Pending interrupt status flags
+// - 0xFF10-0xFF3F: Audio Registers - 4-channel audio processing unit control
+// - 0xFF40-0xFF4B: LCD Registers - Picture processing unit and display controller
+// - 0xFF4C-0xFF7F: Unused Registers - Compatibility placeholder for unused addresses
+// - 0xFFFF: Interrupt Enable - Global interrupt enable mask register (handled by bus)
+//
+// # Component Integration
+//
+// - GamePad: Joypad input state and button matrix scanning
+// - Timer: System timing, divider, and timer overflow interrupts
+// - InterruptController: Hardware interrupt coordination and priority
+// - PPU: Graphics rendering, LCD control, and video timing
+// - AudioSystem: 4-channel sound synthesis and audio output
+// - DMA: Direct memory access transfers for sprites and background
+//
+// # Threading Safety
+//
+// - Thread-safe serial data access through Mutex protection
+// - Global emulation context integration for timing coordination
+// - Safe component state access during register operations
+// - Deadlock prevention through proper lock ordering
+//
+// # Hardware Compatibility
+//
+// - Accurate register behavior matching original Game Boy
+// - Proper side-effect handling for write-sensitive registers
+// - Open bus behavior (0xFF) for unused register ranges
+// - DMA transfer initiation through LCD register writes
 
-  I/O Register Map:
-    FF00: Joypad Register - Input controller for D-pad and button states
-    FF01-FF02: Serial Data - Serial communication transfer buffer and control
-    FF04-FF07: Timer Registers - Programmable timer with divider and control
-    FF0F: Interrupt Flags - Pending interrupt status flags
-    FF10-FF3F: Audio Registers - 4-channel audio processing unit control
-    FF40-FF4B: LCD Registers - Picture processing unit and display controller
-    FF4C-FF7F: Unused Registers - Compatibility placeholder for unused addresses
-    FFFF: Interrupt Enable - Global interrupt enable mask register
-
-  Core Functions:
-    io_read: Register Reader - Routes read requests to appropriate hardware components
-    io_write: Register Writer - Routes write requests with proper side-effect handling
-
-  Component Integration:
-    - GamePad: Joypad input state and button matrix scanning
-    - Timer: System timing, divider, and timer overflow interrupts
-    - InterruptController: Hardware interrupt coordination and priority
-    - PPU: Graphics rendering, LCD control, and video timing
-    - AudioSystem: 4-channel sound synthesis and audio output
-    - DMA: Direct memory access transfers for sprites and background
-
-  Debug Features:
-    - Conditional debug output for unimplemented registers
-    - Timer state logging with context information
-    - Serial communication monitoring
-    - Register access tracing for development
-
-  Threading Safety:
-    - Thread-safe serial data access through Mutex protection
-    - Global emulation context integration for timing coordination
-    - Safe component state access during register operations
-    - Deadlock prevention through proper lock ordering
-
-  Hardware Compatibility:
-    - Accurate register behavior matching original Game Boy
-    - Proper side-effect handling for write-sensitive registers
-    - Open bus behavior for unused register ranges
-    - DMA transfer initiation through LCD register writes
-
-  Error Handling:
-    - Graceful handling of unimplemented register addresses
-    - Safe fallback values for failed lock operations
-    - Debug logging coordination with global debug state
-    - Component failure isolation through return value checking
-*/
-
-// io.rs
 use crate::hdw::apu::AudioSystem;
 use crate::hdw::cpu::CPU;
-use crate::hdw::debug_timer::log_timer_state;
+use crate::hdw::debug::log_timer_state;
 use crate::hdw::dma::DMA;
 use crate::hdw::gamepad::GamePad;
 use crate::hdw::interrupts::InterruptController;
@@ -70,6 +56,39 @@ lazy_static::lazy_static! {
     static ref SERIAL_DATA: Mutex<[u8; 2]> = Mutex::new([0; 2]);
 }
 
+/// Reads a value from a memory-mapped I/O register.
+///
+/// Routes read requests to the appropriate hardware component based on the address.
+/// Handles special cases like timer state logging and serial data access with proper
+/// thread safety. Returns 0xFF for unused register ranges (open bus behavior).
+///
+/// # I/O Register Routing
+///
+/// - 0xFF00: Joypad input state
+/// - 0xFF01-0xFF02: Serial communication data
+/// - 0xFF04-0xFF07: Timer registers (DIV, TIMA, TMA, TAC)
+/// - 0xFF0F: Interrupt flags register
+/// - 0xFF10-0xFF3F: Audio registers (APU channels 1-4)
+/// - 0xFF40-0xFF4B: LCD/PPU registers
+/// - 0xFF4C-0xFF7F: Unused (returns 0xFF)
+///
+/// # Arguments
+///
+/// * `cpu` - Optional CPU reference for debug logging
+/// * `address` - I/O register address to read from (0xFF00-0xFF7F range)
+/// * `interrupt_controller` - Reference to interrupt controller for IF register
+/// * `ppu` - Reference to PPU for LCD register reads
+/// * `gamepad` - Reference to gamepad for joypad register
+/// * `apu` - Reference to audio system for sound registers
+///
+/// # Returns
+///
+/// The value read from the specified I/O register, or 0xFF for unused addresses
+///
+/// # Thread Safety
+///
+/// Uses Mutex locks for serial data and global emulation context access.
+/// Prints error messages if locks fail but continues execution safely.
 pub fn io_read(
     cpu: Option<&CPU>,
     address: u16,
@@ -147,6 +166,43 @@ pub fn io_read(
     value
 }
 
+/// Writes a value to a memory-mapped I/O register.
+///
+/// Routes write requests to the appropriate hardware component based on the address.
+/// Handles side effects like DMA transfer initiation and timer state changes. Silently
+/// ignores writes to unused register ranges for compatibility.
+///
+/// # I/O Register Routing
+///
+/// - 0xFF00: Joypad button/direction selection
+/// - 0xFF01-0xFF02: Serial communication data and control
+/// - 0xFF04-0xFF07: Timer registers (DIV, TIMA, TMA, TAC)
+/// - 0xFF0F: Interrupt flags register
+/// - 0xFF10-0xFF3F: Audio registers (APU channels 1-4)
+/// - 0xFF40-0xFF4B: LCD/PPU registers (may trigger DMA)
+/// - 0xFF4C-0xFF7F: Unused (writes ignored)
+///
+/// # Side Effects
+///
+/// - Writing to 0xFF46 (DMA register via LCD) initiates DMA transfer
+/// - Writing to timer registers may trigger interrupts
+/// - Writing to LCD registers may affect PPU state
+/// - Serial writes update transfer state
+///
+/// # Arguments
+///
+/// * `address` - I/O register address to write to (0xFF00-0xFF7F range)
+/// * `value` - Value to write to the register
+/// * `dma` - Mutable reference to DMA controller for transfer initiation
+/// * `interrupt_controller` - Mutable reference to interrupt controller for IF register
+/// * `ppu` - Mutable reference to PPU for LCD register writes
+/// * `gamepad` - Mutable reference to gamepad for joypad selection
+/// * `apu` - Mutable reference to audio system for sound registers
+///
+/// # Thread Safety
+///
+/// Uses Mutex locks for serial data and global emulation context access.
+/// Prints error messages if locks fail but continues execution safely.
 pub fn io_write(
     address: u16,
     value: u8,

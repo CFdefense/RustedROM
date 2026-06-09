@@ -1,41 +1,39 @@
-/*
-  main.rs
-  Info: Main entry point for RustedROM Game Boy Emulator
-  Description: The main module implements the application entry point and menu system initialization.
-              Handles command line argument parsing, ROM scanning, and launches the game selection interface.
-
-  Main Function:
-    main: Entry point - Initializes menu system with debug mode support and starts the game selection loop
-
-  Module Functions:
-    launch_emulator: Game Launcher - Starts the emulator for a specific ROM file using existing UI context
-    main_direct_rom: Direct ROM Mode - Backwards compatibility function for direct ROM loading (unused in menu mode)
-
-  Key Features:
-    - Command line argument parsing for --debug mode
-    - Automatic ROM scanning in the "roms" directory
-    - Menu-driven game selection interface
-    - Game launching with existing UI context reuse
-    - Clean shutdown and return to menu after game sessions
-    - Debug mode propagation throughout the system
-
-  Dependencies:
-    - MenuContext: Game selection state management
-    - MenuState: Current menu navigation state
-    - GameScanner: ROM file discovery and metadata extraction
-    - MenuRenderer: Menu display and user interface rendering
-    - UI: SDL2-based graphics and input handling
-    - emu: Core emulation engine integration
-
-  Program Flow:
-    1. Parse command line arguments (--debug flag)
-    2. Initialize menu context with debug settings
-    3. Scan "roms" directory for Game Boy ROMs
-    4. Enter main menu loop with keyboard navigation
-    5. Launch selected games in emulator context
-    6. Return to menu after game sessions end
-    7. Clean shutdown on exit request
-*/
+// Main entry point for RustedROM Game Boy Emulator.
+//
+// The main module implements the application entry point and menu system initialization.
+// Handles command line argument parsing, ROM scanning, and launches the game selection interface.
+//
+// Main Function:
+//   main: Entry point - Initializes menu system with debug mode support and starts the game selection loop
+//
+// Module Functions:
+//   launch_emulator: Game Launcher - Starts the emulator for a specific ROM file using existing UI context
+//   main_direct_rom: Direct ROM Mode - Backwards compatibility function for direct ROM loading (unused in menu mode)
+//
+// Key Features:
+//   - Command line argument parsing for --debug mode
+//   - Automatic ROM scanning in the "roms" directory
+//   - Menu-driven game selection interface
+//   - Game launching with existing UI context reuse
+//   - Clean shutdown and return to menu after game sessions
+//   - Debug mode propagation throughout the system
+//
+// Dependencies:
+//   - MenuContext: Game selection state management
+//   - MenuState: Current menu navigation state
+//   - GameScanner: ROM file discovery and metadata extraction
+//   - MenuRenderer: Menu display and user interface rendering
+//   - UI: SDL2-based graphics and input handling
+//   - emu: Core emulation engine integration
+//
+// Program Flow:
+//   1. Parse command line arguments (--debug flag)
+//   2. Initialize menu context with debug settings
+//   3. Scan "roms" directory for Game Boy ROMs
+//   4. Enter main menu loop with keyboard navigation
+//   5. Launch selected games in emulator context
+//   6. Return to menu after game sessions end
+//   7. Clean shutdown on exit request
 
 use std::env;
 use std::path::PathBuf;

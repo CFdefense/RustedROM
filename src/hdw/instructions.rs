@@ -1,54 +1,63 @@
-/**
- * Instructions Module - Game Boy CPU Instruction Set Implementation
- *
- * This module defines and implements the complete Game Boy Sharp LR35902 CPU instruction set.
- * It provides instruction decoding, operand parsing, and execution coordination for all
- * 256 possible opcodes plus the 256 CB-prefixed instructions.
- *
- * Instruction Categories:
- * - Load/Store: Data movement between registers, memory, and immediate values
- * - Arithmetic: ADD, SUB, INC, DEC with flag updates
- * - Logic: AND, OR, XOR, CP with zero/carry flag handling  
- * - Bit Operations: Shifts, rotates, bit test/set/reset (CB-prefixed)
- * - Jumps/Calls: Conditional and unconditional program flow control
- * - Stack: PUSH/POP operations for 16-bit register pairs
- * - Control: NOP, HALT, STOP, interrupt enable/disable
- *
- * Addressing Modes:
- * - Register: Direct register access (A, B, C, D, E, H, L)
- * - Register Indirect: Memory access through register pairs (BC, DE, HL)
- * - Immediate: 8-bit (d8) and 16-bit (d16) literal values  
- * - Direct: Absolute memory addressing (a8, a16)
- * - Relative: PC-relative jumps (r8 signed offset)
- *
- * Instruction Timing:
- * The module handles cycle-accurate timing by calling emu_cycles() during
- * instruction decoding to account for memory access and operand fetch cycles.
- *
- * Conditional Execution:
- * Many instructions support conditional execution based on CPU flags:
- * - Z (Zero), NZ (Not Zero)
- * - C (Carry), NC (Not Carry)
- *
- * The instruction decoder maps opcodes to enum variants that capture both
- * the operation type and its operand requirements for efficient execution.
- */
+// Instructions Module - Game Boy CPU Instruction Set Implementation
+//
+// This module defines and implements the complete Game Boy Sharp LR35902 CPU instruction set.
+// It provides instruction decoding, operand parsing, and execution coordination for all
+// 256 possible opcodes plus the 256 CB-prefixed instructions.
+//
+// Instruction Categories:
+// - Load/Store: Data movement between registers, memory, and immediate values
+// - Arithmetic: ADD, SUB, INC, DEC with flag updates
+// - Logic: AND, OR, XOR, CP with zero/carry flag handling
+// - Bit Operations: Shifts, rotates, bit test/set/reset (CB-prefixed)
+// - Jumps/Calls: Conditional and unconditional program flow control
+// - Stack: PUSH/POP operations for 16-bit register pairs
+// - Control: NOP, HALT, STOP, interrupt enable/disable
+//
+// Addressing Modes:
+// - Register: Direct register access (A, B, C, D, E, H, L)
+// - Register Indirect: Memory access through register pairs (BC, DE, HL)
+// - Immediate: 8-bit (d8) and 16-bit (d16) literal values
+// - Direct: Absolute memory addressing (a8, a16)
+// - Relative: PC-relative jumps (r8 signed offset)
+//
+// Instruction Timing:
+// The module handles cycle-accurate timing by calling emu_cycles() during
+// instruction decoding to account for memory access and operand fetch cycles.
+//
+// Conditional Execution:
+// Many instructions support conditional execution based on CPU flags:
+// - Z (Zero), NZ (Not Zero)
+// - C (Carry), NC (Not Carry)
+//
+// The instruction decoder maps opcodes to enum variants that capture both
+// the operation type and its operand requirements for efficient execution.
 use core::panic;
 
-/*
-
-    File to contain all Enumerations for Instructions and their expected targets and target sources
-    As well as all implementations of Instruction operations such as decoding and matching bytes to instructions
-
-*/
 use super::{cpu::CPU, emu::emu_cycles};
 
-/**
- * Instruction - Complete Game Boy Instruction Set
- *
- * Represents every possible instruction the Game Boy CPU can execute.
- * Each variant captures the instruction type and its required operands.
- */
+/// Complete Game Boy instruction set enumeration.
+///
+/// Represents every possible instruction the Game Boy CPU can execute.
+/// Each variant captures the instruction type and its required operands.
+///
+/// Standard instructions include:
+/// - NOP, STOP, HALT: Control flow
+/// - LD: Load/store operations with various addressing modes
+/// - INC/DEC: Increment/decrement for 8-bit and 16-bit registers
+/// - RLCA, RRCA, RLA, RRA: Accumulator rotates
+/// - ADD, ADC, SUB, SBC: Arithmetic operations
+/// - AND, XOR, OR, CP: Logic and comparison operations
+/// - JR, JP, CALL, RET: Jump and subroutine operations
+/// - PUSH, POP: Stack operations
+/// - RST: Reset vector calls
+/// - DAA, CPL, SCF, CCF: Special accumulator operations
+/// - EI, DI: Interrupt enable/disable
+///
+/// CB-prefixed instructions include:
+/// - RLC, RRC, RL, RR: Rotate operations
+/// - SLA, SRA, SRL: Shift operations
+/// - SWAP: Nibble swap
+/// - BIT, RES, SET: Bit test, reset, and set operations
 // Target For All Instructions
 #[derive(Debug)]
 pub enum Instruction {
@@ -99,7 +108,10 @@ pub enum Instruction {
     SET(ByteTarget),
 }
 
-// Target All 8 bit and 16 bit register except f
+/// All CPU registers for INC/DEC operations.
+///
+/// Includes 8-bit registers (A-L), memory at HL, and 16-bit register pairs.
+/// Excludes the F (flags) register which cannot be directly incremented/decremented.
 #[derive(Debug)]
 pub enum AllRegisters {
     A,
@@ -116,7 +128,9 @@ pub enum AllRegisters {
     SP,
 }
 
-// Enum For BIT/RES/SET Instruction Types
+/// Bit position targets for BIT/RES/SET instructions.
+///
+/// Specifies which bit (0-7) to test, reset, or set in the target register.
 #[derive(Debug)]
 pub enum ByteTarget {
     Zero(HLTarget),
@@ -129,6 +143,9 @@ pub enum ByteTarget {
     Seven(HLTarget),
 }
 
+/// Register targets that can be accessed directly or via HL pointer.
+///
+/// Used for 8-bit operations that support both register and memory operands.
 #[derive(PartialEq, Debug)]
 pub enum HLTarget {
     A,
@@ -141,7 +158,9 @@ pub enum HLTarget {
     HL,
 }
 
-// 16 Bit Targets For Stack
+/// 16-bit register pairs for PUSH/POP stack operations.
+///
+/// Includes AF (accumulator + flags), BC, DE, and HL register pairs.
 #[derive(Debug)]
 pub enum StackTarget {
     AF,
@@ -150,7 +169,10 @@ pub enum StackTarget {
     HL,
 }
 
-// Jump Test
+/// Conditional test flags for jumps, calls, and returns.
+///
+/// Determines whether a conditional instruction executes based on CPU flags.
+/// `Always` means unconditional execution, `HL` means jump to address in HL.
 #[derive(Debug)]
 pub enum JumpTest {
     NotZero,
@@ -161,7 +183,9 @@ pub enum JumpTest {
     HL,
 }
 
-// Enum For Possible Word Load Targets
+/// Target registers for 16-bit load operations.
+///
+/// Specifies where to store a 16-bit value (register pair or memory address).
 #[derive(Debug)]
 pub enum LoadWordTarget {
     BC,
@@ -171,7 +195,9 @@ pub enum LoadWordTarget {
     N16,
 }
 
-// Enum For Possible Word Load Sources
+/// Source operands for 16-bit load operations.
+///
+/// Specifies where to read a 16-bit value from. `SPE8` means SP + signed 8-bit offset.
 #[derive(Debug)]
 pub enum LoadWordSource {
     SP,
@@ -180,7 +206,10 @@ pub enum LoadWordSource {
     SPE8,
 }
 
-// 16 bit addreses to be loaded
+/// 16-bit memory addressing modes for A register loads.
+///
+/// Specifies indirect addressing through register pairs, with optional
+/// post-increment (HLINC) or post-decrement (HLDEC) of HL.
 #[derive(Debug)]
 pub enum LoadN16 {
     BC,
@@ -189,7 +218,9 @@ pub enum LoadN16 {
     HLDEC,
 }
 
-// 16 bit registers to be loaded
+/// 16-bit register pairs for ADD HL operations.
+///
+/// Specifies which register pair to add to HL in 16-bit addition.
 #[derive(Debug, PartialEq, Clone)]
 pub enum AddN16Target {
     BC,
@@ -198,7 +229,10 @@ pub enum AddN16Target {
     SP,
 }
 
-// Some instructions require differing operations types with differing expected values ADD,ADC,SUB etc
+/// Operand types for ADD instruction variants.
+///
+/// Distinguishes between different ADD operations: 8-bit to A, 16-bit to HL,
+/// 16-bit to SP, or immediate 8-bit value.
 #[derive(Debug)]
 pub enum OPType {
     LoadA(HLTarget),
@@ -207,7 +241,10 @@ pub enum OPType {
     LoadD8,
 }
 
-// RST Targets
+/// Reset vector targets for RST instruction.
+///
+/// Specifies which of the 8 reset vectors (0x00, 0x08, 0x10, ..., 0x38)
+/// to call. Used for fast calls to common routines.
 #[derive(Debug)]
 pub enum RestTarget {
     Zero,
@@ -220,27 +257,37 @@ pub enum RestTarget {
     Seven,
 }
 
-// LD Targets For Edge Cases
+/// High RAM addressing for A register loads (0xFF00 + offset).
+///
+/// Specifies direction: store A to high RAM (A8) or load from high RAM to A.
 #[derive(Debug)]
 pub enum LoadA8Target {
     A8,
     A,
 }
 
-// LD Targets For Edge Cases
+/// Absolute 16-bit addressing for A register loads.
+///
+/// Specifies direction: store A to absolute address or load from address to A.
 #[derive(Debug)]
 pub enum LoadA16Target {
     A16,
     A,
 }
 
-// LD Targets For Edge Cases
+/// High RAM addressing via C register (0xFF00 + C).
+///
+/// Specifies direction: store A to (0xFF00 + C) or load from (0xFF00 + C) to A.
 #[derive(Debug)]
 pub enum LoadACTarget {
     C,
     A,
 }
 
+/// Operand targets for arithmetic and logic operations.
+///
+/// Specifies the source operand for operations like ADC, SUB, AND, XOR, OR, CP.
+/// Can be a register, memory at HL, or immediate 8-bit value (D8).
 #[derive(Debug)]
 pub enum OPTarget {
     B,
@@ -254,7 +301,10 @@ pub enum OPTarget {
     D8,
 }
 
-// Enum Describes Load Rule
+/// Load instruction variants with their operand types.
+///
+/// Captures all possible LD instruction forms including register-to-register,
+/// 16-bit loads, indirect addressing, and special A register operations.
 #[derive(Debug)]
 pub enum LoadType {
     RegInReg(HLTarget, HLTarget),         // Store one register into another
@@ -268,7 +318,20 @@ pub enum LoadType {
 }
 
 impl Instruction {
-    // Function to take opcode from cpu and match it to a corresponding Instruction
+    /// Decodes an opcode into an Instruction.
+    ///
+    /// Handles both standard opcodes and CB-prefixed instructions. Automatically
+    /// accounts for memory access cycles during operand fetching.
+    ///
+    /// # Arguments
+    ///
+    /// * `opcode` - The opcode byte to decode
+    /// * `pc` - Current program counter value
+    /// * `cpu` - Mutable CPU reference for memory access and cycle counting
+    ///
+    /// # Returns
+    ///
+    /// `Some(Instruction)` if the opcode is valid, `None` for invalid opcodes
     pub fn decode_from_opcode(opcode: u8, pc: u16, cpu: &mut CPU) -> Option<Instruction> {
         let prefixed = opcode == 0xCB;
 
@@ -294,7 +357,19 @@ impl Instruction {
         instruction
     }
 
-    // Match Instruction to Prefixed Instruction Set
+    /// Decodes a CB-prefixed instruction.
+    ///
+    /// Handles all 256 CB-prefixed opcodes including rotates, shifts, bit operations,
+    /// and swap. Accounts for additional cycles when accessing memory at (HL).
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - The CB-prefixed opcode byte
+    /// * `cpu` - Mutable CPU reference for cycle counting
+    ///
+    /// # Returns
+    ///
+    /// `Some(Instruction)` for valid CB opcodes, `None` for invalid ones
     fn from_prefixed_byte(byte: u8, cpu: &mut CPU) -> Option<Instruction> {
         match byte {
             // RLC
@@ -400,7 +475,19 @@ impl Instruction {
         }
     }
 
-    // Match Instruction to Non Prefixed Instruction Set
+    /// Decodes a standard (non-prefixed) instruction.
+    ///
+    /// Handles all 256 standard opcodes including loads, arithmetic, logic,
+    /// jumps, calls, and stack operations. Accounts for operand fetch cycles.
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - The opcode byte to decode
+    /// * `cpu` - Mutable CPU reference for memory access and cycle counting
+    ///
+    /// # Returns
+    ///
+    /// `Some(Instruction)` for valid opcodes, panics on invalid/undefined opcodes
     fn from_byte_not_prefixed(byte: u8, cpu: &mut CPU) -> Option<Instruction> {
         match byte {
             //NOP
@@ -795,7 +882,22 @@ impl Instruction {
         }
     }
 
-    // Function to help quickly match bytes to their associated HL Target
+    /// Maps opcode low 3 bits to HLTarget register.
+    ///
+    /// Uses modulo 8 to extract register encoding from opcode byte.
+    /// Standard Game Boy register encoding: B=0, C=1, D=2, E=3, H=4, L=5, (HL)=6, A=7.
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - Opcode byte containing register encoding
+    ///
+    /// # Returns
+    ///
+    /// The corresponding HLTarget register
+    ///
+    /// # Panics
+    ///
+    /// Never panics (modulo 8 always produces 0-7)
     fn hl_target_helper(byte: u8) -> HLTarget {
         match byte % 8 {
             0 => Some(HLTarget::B),
@@ -811,7 +913,17 @@ impl Instruction {
         .expect("Math doesn't math") // Unwrap and panic if None
     }
 
-    // Function for OP Targets
+    /// Maps opcode low 3 bits to OPTarget operand.
+    ///
+    /// Similar to hl_target_helper but returns OPTarget enum for arithmetic/logic operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - Opcode byte containing operand encoding
+    ///
+    /// # Returns
+    ///
+    /// The corresponding OPTarget operand
     fn op_target_helper(byte: u8) -> OPTarget {
         match byte % 8 {
             0 => Some(OPTarget::B),
@@ -827,7 +939,22 @@ impl Instruction {
         .expect("Math doesn't math") // Unwrap and panic if None
     }
 
-    // Determine Instruction # and Associated Register
+    /// Extracts bit position and register from BIT/RES/SET opcode.
+    ///
+    /// Decodes CB-prefixed bit operation opcodes to determine which bit (0-7)
+    /// and which register to operate on.
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - CB-prefixed opcode byte
+    ///
+    /// # Returns
+    ///
+    /// ByteTarget containing bit position and target register
+    ///
+    /// # Panics
+    ///
+    /// Panics if opcode doesn't match expected bit operation pattern
     fn byte_target_helper(byte: u8) -> ByteTarget {
         let some_instruction = Self::hl_target_helper(byte);
         match byte {
@@ -867,7 +994,18 @@ impl Instruction {
         }
     }
 
-    // Function to help match large set of LD instructions by first matching their target then their associated source
+    /// Decodes register-to-register LD instructions.
+    ///
+    /// Handles the large block of LD opcodes (0x40-0x7F) that move data between
+    /// 8-bit registers. Also handles HALT (0x76) which falls in this range.
+    ///
+    /// # Arguments
+    ///
+    /// * `byte` - Opcode byte in range 0x40-0x7F
+    ///
+    /// # Returns
+    ///
+    /// The corresponding LD instruction or HALT
     fn load_register_helper(byte: u8) -> Option<Instruction> {
         match byte {
             0x76 => Some(Instruction::HALT),

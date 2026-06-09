@@ -62,13 +62,33 @@
 
 use core::panic;
 
+/// Game Boy RAM controller managing Work RAM and High RAM.
+///
+/// This structure implements the Game Boy's internal RAM system, consisting of:
+/// - Work RAM (WRAM): 8KB of general-purpose memory at 0xC000-0xDFFF
+/// - High RAM (HRAM): 127 bytes of fast zero-page memory at 0xFF80-0xFFFE
+///
+/// The controller handles echo RAM mapping (0xE000-0xFDFF mirrors WRAM) and
+/// provides fast, direct memory access for game data, variables, and stack operations.
 pub struct RAM {
+    /// Work RAM array (8KB) - General-purpose memory for game data and stack.
+    /// Maps to addresses 0xC000-0xDFFF with echo region at 0xE000-0xFDFF.
     wram: [u8; 0x2000],
+
+    /// High RAM array (127 bytes) - Fast zero-page memory for critical code.
+    /// Maps to addresses 0xFF80-0xFFFE, isolated from DMA transfers.
     hram: [u8; 0x80],
 }
 
 impl RAM {
-    // Constructor
+    /// Creates a new RAM controller with zeroed memory.
+    ///
+    /// Initializes both Work RAM (8KB) and High RAM (127 bytes) with zero values,
+    /// matching the power-on state of the Game Boy hardware.
+    ///
+    /// # Returns
+    ///
+    /// A new `RAM` instance with all memory initialized to 0x00.
     pub fn new() -> Self {
         RAM {
             wram: [0; 0x2000],
@@ -76,7 +96,24 @@ impl RAM {
         }
     }
 
-    // Method to read from wram
+    /// Reads a byte from Work RAM with echo RAM support.
+    ///
+    /// Handles both direct WRAM access (0xC000-0xDFFF) and echo RAM addresses
+    /// (0xE000-0xFDFF). Echo addresses are automatically mapped to their
+    /// corresponding WRAM locations by subtracting 0x2000.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to read from (0xC000-0xDFFF or 0xE000-0xFDFF)
+    ///
+    /// # Returns
+    ///
+    /// The byte value at the specified address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is outside valid WRAM/echo ranges with detailed
+    /// error information including original, mapped, and offset addresses.
     pub fn wram_read(&self, address: u16) -> u8 {
         // Handle echo RAM addresses (0xE000-0xFDFF) by mapping them to WRAM
         let mapped_address = if address >= 0xE000 && address <= 0xFDFF {
@@ -98,7 +135,22 @@ impl RAM {
         self.wram[offset_address as usize]
     }
 
-    // Method to write to wram
+    /// Writes a byte to Work RAM with echo RAM support.
+    ///
+    /// Handles both direct WRAM access (0xC000-0xDFFF) and echo RAM addresses
+    /// (0xE000-0xFDFF). Echo addresses are automatically mapped to their
+    /// corresponding WRAM locations, ensuring writes to echo addresses affect
+    /// the actual WRAM.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to write to (0xC000-0xDFFF or 0xE000-0xFDFF)
+    /// * `value` - Byte value to write
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is outside valid WRAM/echo ranges with detailed
+    /// error information including original, mapped, and offset addresses.
     pub fn wram_write(&mut self, address: u16, value: u8) {
         // Handle echo RAM addresses (0xE000-0xFDFF) by mapping them to WRAM
         let mapped_address = if address >= 0xE000 && address <= 0xFDFF {
@@ -120,7 +172,23 @@ impl RAM {
         self.wram[offset_address as usize] = value;
     }
 
-    // Method to read from hram
+    /// Reads a byte from High RAM (zero-page memory).
+    ///
+    /// Provides fast access to the 127-byte High RAM region used for critical
+    /// code and interrupt handlers. HRAM is isolated from DMA transfers and
+    /// offers the fastest memory access in the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to read from (0xFF80-0xFFFE)
+    ///
+    /// # Returns
+    ///
+    /// The byte value at the specified HRAM address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is outside the valid HRAM range (0xFF80-0xFFFE).
     pub fn hram_read(&self, address: u16) -> u8 {
         if address < 0xFF80 || address > 0xFFFE {
             panic!("INVALID HRAM ADDRESS: {:04X}", address);
@@ -130,7 +198,20 @@ impl RAM {
         self.hram[offset_address as usize]
     }
 
-    // Method to write to hram
+    /// Writes a byte to High RAM (zero-page memory).
+    ///
+    /// Provides fast write access to the 127-byte High RAM region. HRAM is
+    /// commonly used for interrupt handlers and time-critical code due to
+    /// its fast access speed and isolation from DMA operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - Memory address to write to (0xFF80-0xFFFE)
+    /// * `value` - Byte value to write
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is outside the valid HRAM range (0xFF80-0xFFFE).
     pub fn hram_write(&mut self, address: u16, value: u8) {
         if address < 0xFF80 || address > 0xFFFE {
             panic!("INVALID HRAM ADDRESS: {:04X}", address);

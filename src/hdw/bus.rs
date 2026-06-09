@@ -72,18 +72,57 @@ use crate::hdw::io::{io_read, io_write};
 use crate::hdw::ppu::PPU;
 use crate::hdw::ram::RAM;
 
+/// Game Boy memory bus coordinating all hardware component access.
+///
+/// The BUS structure acts as the central memory management unit, routing all memory
+/// access requests to the appropriate hardware components based on address ranges.
+/// It implements the complete Game Boy memory map (0x0000-0xFFFF) and coordinates
+/// access control, DMA transfers, and component isolation.
+///
+/// # Memory Map
+///
+/// - 0x0000-0x7FFF: Cartridge ROM (fixed and switchable banks)
+/// - 0x8000-0x9FFF: Video RAM (tile data and maps)
+/// - 0xA000-0xBFFF: Cartridge RAM (save data)
+/// - 0xC000-0xDFFF: Work RAM
+/// - 0xE000-0xFDFF: Echo RAM (mirrors WRAM)
+/// - 0xFE00-0xFE9F: Object Attribute Memory (sprites)
+/// - 0xFEA0-0xFEFF: Restricted (unusable)
+/// - 0xFF00-0xFF7F: I/O Registers
+/// - 0xFF80-0xFFFE: High RAM
+/// - 0xFFFF: Interrupt Enable Register
 pub struct BUS {
+    /// Cartridge interface for ROM and RAM access with memory bank controller support.
     pub cart: Cartridge,
+
+    /// RAM controller managing Work RAM (8KB) and High RAM (127 bytes).
     pub ram: RAM,
+
+    /// Picture Processing Unit handling video RAM and graphics rendering.
     pub ppu: PPU,
+
+    /// Audio Processing Unit managing sound registers and audio output.
     pub apu: AudioSystem,
+
+    /// GamePad controller for joypad input state and register management.
     pub gamepad: GamePad,
+
+    /// Interrupt controller managing interrupt flags and enable register.
     pub interrupt_controller: InterruptController,
+
+    /// DMA controller for direct memory access transfers to OAM.
     pub dma: DMA,
 }
 
 impl BUS {
-    // Constructor
+    /// Creates a new memory bus with all hardware components initialized.
+    ///
+    /// Initializes the cartridge, RAM, PPU, APU, gamepad, interrupt controller,
+    /// and DMA controller with their default states, ready for emulation.
+    ///
+    /// # Returns
+    ///
+    /// A new `BUS` instance with all components initialized to power-on state.
     pub fn new() -> Self {
         BUS {
             cart: Cartridge::new(),
@@ -96,7 +135,32 @@ impl BUS {
         }
     }
 
-    // Function to return a byte at an address
+    /// Reads a byte from the memory bus at the specified address.
+    ///
+    /// Routes the read request to the appropriate hardware component based on
+    /// the address range. Handles special cases like DMA transfer protection
+    /// for OAM access and restricted memory regions.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpu` - Optional CPU reference for I/O register reads requiring CPU state
+    /// * `address` - 16-bit memory address to read from (0x0000-0xFFFF)
+    ///
+    /// # Returns
+    ///
+    /// The byte value at the specified address, or 0xFF/0x00 for protected/restricted regions.
+    ///
+    /// # Memory Routing
+    ///
+    /// - ROM (0x0000-0x7FFF): Cartridge ROM banks
+    /// - VRAM (0x8000-0x9FFF): PPU video RAM
+    /// - Cart RAM (0xA000-0xBFFF): Cartridge RAM
+    /// - WRAM (0xC000-0xFDFF): Work RAM with echo support
+    /// - OAM (0xFE00-0xFE9F): Sprite attributes (0xFF during DMA)
+    /// - Restricted (0xFEA0-0xFEFF): Returns 0x00
+    /// - I/O (0xFF00-0xFF7F): Hardware registers
+    /// - HRAM (0xFF80-0xFFFE): High RAM
+    /// - IE (0xFFFF): Interrupt Enable register
     pub fn read_byte(&mut self, cpu: Option<&CPU>, address: u16) -> u8 {
         let value = match address {
             0x0000..=0x7FFF => self.cart.read_byte(address), // Cartridge ROM
@@ -127,7 +191,29 @@ impl BUS {
         value
     }
 
-    // Function to write byte to correct place
+    /// Writes a byte to the memory bus at the specified address.
+    ///
+    /// Routes the write request to the appropriate hardware component based on
+    /// the address range. Handles special cases like DMA transfer protection,
+    /// echo RAM (which is ignored), and restricted memory regions.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - 16-bit memory address to write to (0x0000-0xFFFF)
+    /// * `value` - Byte value to write
+    ///
+    /// # Memory Routing
+    ///
+    /// - ROM (0x0000-0x7FFF): Cartridge control (bank switching)
+    /// - VRAM (0x8000-0x9FFF): PPU video RAM
+    /// - Cart RAM (0xA000-0xBFFF): Cartridge RAM
+    /// - WRAM (0xC000-0xDFFF): Work RAM
+    /// - Echo RAM (0xE000-0xFDFF): Ignored (no operation)
+    /// - OAM (0xFE00-0xFE9F): Sprite attributes (blocked during DMA)
+    /// - Restricted (0xFEA0-0xFEFF): Ignored (no operation)
+    /// - I/O (0xFF00-0xFF7F): Hardware registers
+    /// - HRAM (0xFF80-0xFFFE): High RAM
+    /// - IE (0xFFFF): Interrupt Enable register
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x7FFF => self.cart.write_byte(address, value), // ROM Banks
@@ -164,6 +250,15 @@ impl BUS {
         }
     }
 
+    /// Processes one tick of DMA transfer if active.
+    ///
+    /// Advances the DMA controller state by one cycle if a DMA transfer is
+    /// currently in progress. Uses `std::mem::take` to temporarily move the
+    /// DMA controller out of the bus for mutable access during the transfer.
+    ///
+    /// DMA transfers copy 160 bytes from source memory to OAM (0xFE00-0xFE9F)
+    /// and take 160 machine cycles to complete. During transfer, CPU access
+    /// to OAM is blocked.
     pub fn tick_dma(&mut self) {
         let mut dma = std::mem::take(&mut self.dma);
         if dma.dma_transferring() {
