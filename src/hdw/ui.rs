@@ -1,36 +1,44 @@
+// hdw/ui.rs
+// SDL2-based Game Boy Emulator User Interface
+//
+// This module implements the complete user interface system for the Game Boy emulator,
+// including the main game display, debug tile viewer, header overlay, and audio output.
+// It uses SDL2 for cross-platform graphics, audio, and input handling.
+//
+// # Display Components
+//
+// - Main game window: 800x700 pixels with scaled Game Boy display (160x144 -> 640x576)
+// - Debug tile viewer: 16x24 grid showing all 384 VRAM tiles (when debug enabled)
+// - Header overlay: Shows game name, current time, and exit button
+// - Footer bar: Shows FPS counter and control mappings
+//
+// # Audio System
+//
+// - SDL2 audio queue with 44.1kHz mono output
+// - Real-time audio sample buffering from APU
+// - Configurable buffer sizes for low-latency playback
+// - Automatic silence filling when no samples available
+//
+// # Rendering Pipeline
+//
+// - Surface-based pixel manipulation for game display
+// - Texture streaming for GPU-accelerated rendering
+// - Custom 5x7 bitmap font rendering for UI text
+// - Color palette support for authentic Game Boy visuals
+//
+// # Input Handling
+//
+// - Keyboard mapping: Z=B, X=A, Arrows=D-Pad, Enter=Start, Tab=Select, Esc=Exit
+// - Mouse support for EXIT button in header
+// - Event-driven input processing through SDL2
+//
+// The UI system provides both emulation display and development tools,
+// with the debug viewer showing raw VRAM tile data for development purposes.
+
 use crate::hdw::cpu::CPU;
 use chrono::Local;
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::pixels::Color;
-/**
- * UI Module - SDL2-based Game Boy Emulator User Interface
- *
- * This module implements the complete user interface system for the Game Boy emulator,
- * including the main game display, debug tile viewer, header overlay, and audio output.
- * It uses SDL2 for cross-platform graphics, audio, and input handling.
- *
- * Display Components:
- * - Main game window: 800x600 pixels with scaled Game Boy display (160x144 -> 640x576)
- * - Debug tile viewer: 16x24 grid showing all 384 VRAM tiles (when debug enabled)
- * - Header overlay: Shows game name, current time, and exit button
- * - FPS counter: Real-time frame rate display
- *
- * Audio System:
- * - SDL2 audio queue with 44.1kHz mono output
- * - Real-time audio sample buffering from APU
- * - Configurable buffer sizes for low-latency playback
- *
- * Rendering Pipeline:
- * - Surface-based pixel manipulation for game display
- * - Texture streaming for GPU-accelerated rendering
- * - Custom bitmap font rendering for UI text
- * - Color palette support for authentic Game Boy visuals
- *
- * The UI system provides both emulation display and development tools,
- * with the debug viewer showing raw VRAM tile data for development purposes.
- */
-// UI module for Game Boy emulator
-// Handles SDL2-based graphical user interface, including main game display and debug tile viewer
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::{TextureCreator, WindowCanvas};
@@ -41,80 +49,184 @@ use sdl2::EventPump;
 use sdl2::VideoSubsystem;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Main emulator window dimensions - provides plenty of space for the scaled Game Boy display
+/// Main emulator window width in pixels.
+///
+/// Provides space for the scaled Game Boy display plus UI elements.
 pub const SCREEN_WIDTH: u32 = 800;
-pub const SCREEN_HEIGHT: u32 = 700; // Increased from 650 to 700 to ensure full visibility
 
-// Game Boy screen resolution - the actual LCD dimensions
+/// Main emulator window height in pixels.
+///
+/// Increased to 700 to ensure full visibility of game display with header and footer.
+pub const SCREEN_HEIGHT: u32 = 700;
+
+/// Game Boy LCD horizontal resolution in pixels.
+///
+/// The original Game Boy screen width.
 pub const XRES: u32 = 160;
+
+/// Game Boy LCD vertical resolution in pixels.
+///
+/// The original Game Boy screen height.
 pub const YRES: u32 = 144;
 
-// Scale factor for pixel upscaling - calculated to fit the window
-// With 800x600 window and minimal UI padding, use scale of 3.5 equivalent (implemented as 7/2)
+/// Pixel upscaling factor for Game Boy display.
+///
+/// Each Game Boy pixel is rendered as a 4x4 block of screen pixels,
+/// resulting in a 640x576 display area (160*4 x 144*4).
 const SCALE: u32 = 4;
 
-// Debug window shows VRAM tile data in a 16x24 grid (384 tiles total)
-// Each tile is 8x8 pixels, scaled up by the scale factor
+/// Debug window width in pixels.
+///
+/// Shows VRAM tile data in a 16x24 grid (384 tiles total).
+/// Each 8x8 tile is scaled by SCALE factor: 16 * 8 * 4 = 512 pixels.
 pub const DEBUG_WINDOW_WIDTH: u32 = 16 * 8 * SCALE;
+
+/// Debug window height in pixels.
+///
+/// Shows VRAM tile data in a 16x24 grid (384 tiles total).
+/// Each 8x8 tile is scaled by SCALE factor: 24 * 8 * 4 = 768 pixels.
 pub const DEBUG_WINDOW_HEIGHT: u32 = 24 * 8 * SCALE;
 
-// Debug surface matches the window size exactly to prevent black space
+/// Debug surface width matching window size.
+///
+/// Prevents black space by matching the debug window dimensions exactly.
 pub const DEBUG_SURFACE_WIDTH: u32 = 16 * 8 * SCALE;
+
+/// Debug surface height matching window size.
+///
+/// Prevents black space by matching the debug window dimensions exactly.
 pub const DEBUG_SURFACE_HEIGHT: u32 = 24 * 8 * SCALE;
 
-// Color palette for tile display in debug viewer
-// Represents the 4 possible Game Boy colors from white to black
+/// Color palette for tile display in debug viewer.
+///
+/// Represents the 4 possible Game Boy grayscale shades in ARGB format:
+/// - 0xFFFFFFFF: White (color 0)
+/// - 0xFFAAAAAA: Light gray (color 1)
+/// - 0xFF555555: Dark gray (color 2)
+/// - 0xFF000000: Black (color 3)
 const TILE_COLORS: [u32; 4] = [0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000];
 
-/**
- * UI - Main User Interface Controller
- *
- * Manages all aspects of the emulator's visual and audio presentation.
- * Coordinates between SDL2 subsystems and emulator components to provide
- * real-time display of Game Boy output with optional debug visualizations.
- *
- * The UI handles window management, rendering pipelines, audio streaming,
- * and provides development tools for debugging graphics and timing.
- */
+/// Main user interface controller for the Game Boy emulator.
+///
+/// Manages all aspects of the emulator's visual and audio presentation.
+/// Coordinates between SDL2 subsystems and emulator components to provide
+/// real-time display of Game Boy output with optional debug visualizations.
+///
+/// # Display System
+///
+/// - Main window: 800x700 pixels with centered 640x576 game display
+/// - Debug window: Optional 512x768 tile viewer showing all VRAM tiles
+/// - Header bar: Game name, current time, and EXIT button
+/// - Footer bar: FPS counter and control mappings
+///
+/// # Audio System
+///
+/// - 44.1kHz mono audio output through SDL2 audio queue
+/// - Real-time sample buffering from APU with automatic silence filling
+/// - Target buffer size of 4096 samples for smooth playback
+///
+/// # Rendering Pipeline
+///
+/// 1. PPU generates pixels to video buffer
+/// 2. UI copies pixels to SDL surface with scaling
+/// 3. Surface converted to texture for GPU rendering
+/// 4. Texture presented to screen via canvas
+///
+/// The UI handles window management, rendering pipelines, audio streaming,
+/// and provides development tools for debugging graphics and timing.
 pub struct UI {
-    // Core SDL2 components
+    /// SDL2 context (kept alive for subsystem lifetime).
     pub _sdl_context: sdl2::Sdl,
+
+    /// SDL2 video subsystem (kept alive for window lifetime).
     pub _video_subsystem: VideoSubsystem,
+
+    /// SDL2 TTF context for text rendering (currently unused).
     pub _ttf_context: Sdl2TtfContext,
 
-    // Rendering contexts for main game window and debug tile viewer
+    /// Main game window canvas for rendering.
     pub main_canvas: WindowCanvas,
+
+    /// Optional debug tile viewer canvas (only when debug enabled).
     pub debug_canvas: Option<WindowCanvas>,
 
-    // Texture creators for efficient rendering
+    /// Texture creator for main window rendering.
     pub main_texture_creator: TextureCreator<WindowContext>,
+
+    /// Optional texture creator for debug window (only when debug enabled).
     pub debug_texture_creator: Option<TextureCreator<WindowContext>>,
 
-    // Event handling for user input
+    /// SDL2 event pump for input handling.
     pub event_pump: EventPump,
 
-    // Frame buffers - surfaces hold pixel data before rendering to screen
+    /// Main display surface for pixel manipulation.
+    ///
+    /// Holds the complete frame including game display, header, and footer.
     pub screen_surface: Surface<'static>,
+
+    /// Optional debug surface for tile viewer (only when debug enabled).
     pub debug_surface: Option<Surface<'static>>,
 
-    // Audio components
+    /// SDL2 audio queue for sound output.
+    ///
+    /// None if audio initialization failed.
     pub audio_queue: Option<AudioQueue<f32>>,
 
-    // Debug flag
+    /// Debug mode flag.
+    ///
+    /// When true, enables debug tile viewer window.
     pub debug: bool,
 
-    // Game info for header bar
+    /// Current game name for header display.
     pub current_game_name: Option<String>,
+
+    /// Header bar visibility flag.
     pub show_header: bool,
+
+    /// Exit request flag set by user input.
     pub exit_requested: bool,
 
-    // FPS tracking
+    /// Frame counter for FPS calculation.
     pub fps_counter: u32,
+
+    /// Current FPS value for display.
     pub fps_display: u32,
+
+    /// Timer for FPS calculation (milliseconds).
     pub fps_timer: u64,
 }
 
 impl UI {
+    /// Creates a new UI instance with SDL2 initialization.
+    ///
+    /// Initializes all SDL2 subsystems (video, audio, TTF), creates the main game window,
+    /// and optionally creates a debug tile viewer window. Sets up audio queue for sound
+    /// output and prepares rendering surfaces.
+    ///
+    /// # Window Configuration
+    ///
+    /// - Main window: 800x700 pixels, centered on screen
+    /// - Debug window: 512x768 pixels, positioned to the right of main window (if debug=true)
+    /// - Both windows use ARGB8888 pixel format for full color support
+    ///
+    /// # Audio Configuration
+    ///
+    /// - Sample rate: 44.1kHz
+    /// - Channels: Mono (1 channel)
+    /// - Buffer size: 4096 samples
+    ///
+    /// # Arguments
+    ///
+    /// * `debug` - If true, creates debug tile viewer window
+    ///
+    /// # Returns
+    ///
+    /// Result containing the initialized UI or an error string if initialization fails
+    ///
+    /// # Errors
+    ///
+    /// Returns Err if SDL2 initialization fails, window creation fails, or surface
+    /// allocation fails. Audio failure is non-fatal and results in None audio_queue.
     pub fn new(debug: bool) -> Result<Self, String> {
         // Initialize SDL2 video subsystem
         let sdl_context = sdl2::init()?;
@@ -221,9 +333,26 @@ impl UI {
         })
     }
 
-    /// Renders a single 8x8 tile from VRAM to the debug surface
-    /// Each tile consists of 16 bytes (2 bytes per 8-pixel row)
-    /// The two bytes form bit planes that combine to create 2-bit color values (0-3)
+    /// Renders a single 8x8 tile from VRAM to the debug surface.
+    ///
+    /// Each tile consists of 16 bytes (2 bytes per 8-pixel row). The two bytes form
+    /// bit planes that combine to create 2-bit color values (0-3). The tile is rendered
+    /// with pixel scaling applied.
+    ///
+    /// # Tile Data Format
+    ///
+    /// Each row of the tile uses 2 bytes:
+    /// - Byte 1: Low bit plane (bits 0-7 for pixels 7-0)
+    /// - Byte 2: High bit plane (bits 0-7 for pixels 7-0)
+    /// - Combined: 2-bit color index per pixel (0=white, 3=black)
+    ///
+    /// # Arguments
+    ///
+    /// * `start_location` - Base address in VRAM (typically 0x8000)
+    /// * `tile_num` - Tile index (0-383)
+    /// * `x` - X position on debug surface
+    /// * `y` - Y position on debug surface
+    /// * `cpu` - CPU reference for VRAM access
     fn display_tile(
         &mut self,
         start_location: u16,
@@ -286,8 +415,17 @@ impl UI {
         }
     }
 
-    /// Updates the debug window showing all tiles in VRAM
-    /// Displays 384 tiles in a 16x24 grid layout
+    /// Updates the debug window showing all tiles in VRAM.
+    ///
+    /// Displays all 384 tiles from VRAM in a 16x24 grid layout. Each tile is 8x8 pixels
+    /// and is scaled by the SCALE factor. The debug surface is cleared with a dark gray
+    /// background before rendering tiles.
+    ///
+    /// Only updates if debug mode is enabled and debug components exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpu` - Mutable CPU reference for VRAM access
     pub fn update_dbg_window(&mut self, cpu: &mut super::cpu::CPU) {
         // Only update if debug is enabled and components exist
         if !self.debug
@@ -354,8 +492,26 @@ impl UI {
         }
     }
 
-    /// Updates the main game display window
-    /// Renders the PPU's video buffer to screen with pixel scaling
+    /// Updates the main game display window.
+    ///
+    /// Renders the PPU's video buffer to screen with pixel scaling, draws header and
+    /// footer overlays, and updates the debug window if enabled. The game display is
+    /// centered in the window with appropriate padding for UI elements.
+    ///
+    /// # Rendering Steps
+    ///
+    /// 1. Update debug window (if enabled)
+    /// 2. Update FPS counter
+    /// 3. Clear screen surface
+    /// 4. Calculate centering offsets
+    /// 5. Render each pixel from video buffer with scaling
+    /// 6. Render header bar (if enabled)
+    /// 7. Render footer bar with FPS and controls
+    /// 8. Convert surface to texture and present
+    ///
+    /// # Arguments
+    ///
+    /// * `cpu` - Mutable CPU reference for PPU video buffer access
     pub fn ui_update(&mut self, cpu: &mut super::cpu::CPU) {
         // Update debug window first to avoid borrow conflicts
         self.update_dbg_window(cpu);
@@ -442,7 +598,10 @@ impl UI {
         self.main_canvas.present();
     }
 
-    /// Updates FPS counter
+    /// Updates the FPS counter.
+    ///
+    /// Increments the frame counter and updates the display FPS value once per second.
+    /// Uses millisecond timing to calculate frames per second.
     fn update_fps(&mut self) {
         let now = get_ticks();
         if now - self.fps_timer > 1000 {
@@ -454,12 +613,24 @@ impl UI {
         }
     }
 
-    /// Sets the current game name for display in the header bar
+    /// Sets the current game name for display in the header bar.
+    ///
+    /// # Arguments
+    ///
+    /// * `game_name` - Name of the currently loaded game
     pub fn set_game_name(&mut self, game_name: String) {
         self.current_game_name = Some(game_name);
     }
 
-    /// Renders the header bar overlay with game name, time, and exit button
+    /// Renders the header bar overlay with game name, time, and exit button.
+    ///
+    /// The header bar is a semi-transparent dark overlay at the top of the screen
+    /// containing:
+    /// - Game name on the left
+    /// - Current time (HH:MM:SS) in the center
+    /// - EXIT button on the right (clickable)
+    ///
+    /// The EXIT button has a red background with white text and border.
     fn render_header_bar(&mut self) {
         let header_height = 35; // Match the header height constant
         let header_rect = Rect::new(0, 0, SCREEN_WIDTH, header_height);
@@ -534,13 +705,26 @@ impl UI {
         );
     }
 
-    /// Gets the current time as a formatted string
+    /// Gets the current time as a formatted string.
+    ///
+    /// # Returns
+    ///
+    /// Current time in HH:MM:SS format
     fn get_current_time_string(&self) -> String {
         let now = Local::now();
         now.format("%H:%M:%S").to_string()
     }
 
-    /// Draws text on the header bar using simple pixel font
+    /// Draws text on the header bar using simple pixel font.
+    ///
+    /// Uses a custom 5x7 bitmap font with 6-pixel character spacing.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Text string to render
+    /// * `x` - X position for text start
+    /// * `y` - Y position for text baseline
+    /// * `color` - Color for text rendering
     fn draw_header_text(&mut self, text: &str, x: i32, y: i32, color: Color) {
         for (i, ch) in text.chars().enumerate() {
             let char_x = x + (i as i32 * 6);
@@ -548,7 +732,17 @@ impl UI {
         }
     }
 
-    /// Draws a single character using a simple 5x7 pixel font
+    /// Draws a single character using a simple 5x7 pixel font.
+    ///
+    /// Uses bitmap patterns for uppercase letters, digits, and common punctuation.
+    /// Unsupported characters are rendered as 'O'.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - Character to render (converted to uppercase)
+    /// * `x` - X position for character
+    /// * `y` - Y position for character
+    /// * `color` - Color for character rendering
     fn draw_header_char(&mut self, ch: char, x: i32, y: i32, color: Color) {
         // Simple 5x7 bitmap font patterns
         let pattern = match ch.to_ascii_uppercase() {
@@ -680,7 +874,14 @@ impl UI {
         }
     }
 
-    /// Renders the footer bar containing FPS counter and controls
+    /// Renders the footer bar containing FPS counter and controls.
+    ///
+    /// The footer bar is a semi-transparent dark overlay at the bottom of the screen
+    /// containing:
+    /// - FPS counter on the left
+    /// - Control mappings in the center (Z=B, X=A, etc.)
+    ///
+    /// The controls text has a darker background for better readability.
     fn render_footer_bar(&mut self) {
         let footer_height = 55u32; // Increased from 50 to 55
         let footer_y = SCREEN_HEIGHT - footer_height;
@@ -724,7 +925,21 @@ impl UI {
         self.draw_header_text(&fps_text, fps_x, fps_y, Color::RGB(255, 255, 255));
     }
 
-    /// Updates audio by getting samples from the audio system and queuing them
+    /// Updates audio by getting samples from the audio system and queuing them.
+    ///
+    /// Checks the audio queue size and adds samples if the buffer is getting low.
+    /// Maintains a target buffer size of 4096 samples for smooth playback. Fills
+    /// with silence if no samples are available from the APU.
+    ///
+    /// # Buffer Management
+    ///
+    /// - Target queue size: 4096 samples
+    /// - Adds up to 1024 samples per call if queue is low
+    /// - Automatically fills with silence when APU buffer is empty
+    ///
+    /// # Arguments
+    ///
+    /// * `cpu` - Mutable CPU reference for APU sample buffer access
     pub fn update_audio(&mut self, cpu: &mut CPU) {
         if let Some(ref audio_queue) = self.audio_queue {
             // Get available queue size
@@ -761,13 +976,26 @@ impl UI {
     }
 }
 
-/// Cross-platform delay function using standard library sleep
+/// Cross-platform delay function using standard library sleep.
+///
+/// Pauses execution for the specified number of milliseconds. Used for
+/// frame rate limiting and timing control.
+///
+/// # Arguments
+///
+/// * `ms` - Number of milliseconds to delay
 pub fn delay(ms: u32) {
     std::thread::sleep(std::time::Duration::from_millis(ms as u64));
 }
 
-/// Get current time in milliseconds since Unix epoch
-/// Used for frame timing and FPS calculations
+/// Gets current time in milliseconds since Unix epoch.
+///
+/// Used for frame timing and FPS calculations. Provides a monotonic
+/// timestamp for measuring elapsed time.
+///
+/// # Returns
+///
+/// Current time in milliseconds since January 1, 1970 00:00:00 UTC
 pub fn get_ticks() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

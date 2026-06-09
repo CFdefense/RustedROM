@@ -64,11 +64,14 @@ pub struct Timer {
 }
 
 impl Timer {
-    /**
-     * Creates a new Timer instance with hardware-accurate initial values
-     *
-     * Returns: New Timer with DIV set to common startup value
-     */
+    /// Creates a new Timer instance with hardware-accurate initial values.
+    ///
+    /// Initializes the timer with a common startup DIV value (0xAC00) that
+    /// is often seen in hardware logs. Other registers start at 0.
+    ///
+    /// # Returns
+    ///
+    /// New Timer with DIV set to common startup value
     pub fn new() -> Self {
         Timer {
             // Initial value often seen in logs - represents startup state
@@ -79,16 +82,25 @@ impl Timer {
         }
     }
 
-    /**
-     * Advances timer by one CPU cycle and handles TIMA updates
-     *
-     * This function implements the Game Boy's timer behavior using edge detection
-     * on specific bits of the internal DIV counter. When the selected bit transitions
-     * from 1 to 0, TIMA is incremented if the timer is enabled.
-     *
-     * Arguments:
-     * - cpu: Mutable reference to CPU for interrupt handling
-     */
+    /// Advances timer by one CPU cycle and handles TIMA updates.
+    ///
+    /// This function implements the Game Boy's timer behavior using edge detection
+    /// on specific bits of the internal DIV counter. When the selected bit transitions
+    /// from 1 to 0, TIMA is incremented if the timer is enabled.
+    ///
+    /// # Timer Frequency Detection
+    ///
+    /// - 00 (4096 Hz): Detects bit 9 transition (1->0)
+    /// - 01 (262144 Hz): Detects bit 3 transition (1->0)
+    /// - 10 (65536 Hz): Detects bit 5 transition (1->0)
+    /// - 11 (16384 Hz): Detects bit 7 transition (1->0)
+    ///
+    /// When TIMA overflows from 0xFF, it is reloaded with TMA and a timer
+    /// interrupt is requested.
+    ///
+    /// # Arguments
+    ///
+    /// * `cpu` - Mutable reference to CPU for interrupt handling
     pub fn timer_tick(&mut self, cpu: &mut CPU) {
         let prev_div: u16 = self.div;
         self.div = self.div.wrapping_add(1);

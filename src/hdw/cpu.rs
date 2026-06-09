@@ -1,59 +1,57 @@
-/*
-  hdw/cpu.rs
-  Info: Central Processing Unit implementation for Game Boy emulation
-  Description: The CPU module implements the Sharp LR35902 processor used in the Game Boy.
-              Features a complete instruction set with accurate timing, interrupt handling,
-              and debug capabilities for development and testing.
-
-  CPU Struct Members:
-    registers: CPU Registers - A, B, C, D, E, H, L registers and flags (F) register
-    pc: Program Counter - Current instruction address in memory space
-    sp: Stack Pointer - Current position in the call stack
-    bus: System Bus - Interface to memory, I/O, and other hardware components
-    curr_opcode: Current Opcode - The instruction byte currently being executed
-    curr_instruction: Current Instruction - Decoded instruction enum for execution
-    is_halted: Halt State - CPU halted until interrupt occurs (HALT instruction)
-    log_ticks: Debug Logging - Enables detailed execution logging with cycle counts
-    debug: Debug Mode - Global debug flag for development features
-
-  CPU Implementation Methods:
-    new: Constructor - Initializes CPU with authentic Game Boy register values and debug settings
-    step: Execution Cycle - Performs one complete instruction fetch-decode-execute cycle
-    fetch: Instruction Fetch - Reads the next opcode from memory at PC address
-    decode: Instruction Decode - Converts opcode to executable instruction enum
-    execute: Instruction Execute - Matches instruction enum to implementation function
-    cpu_request_interrupt: Interrupt Request - Requests hardware interrupt from external components
-
-  Instruction Categories:
-    - Arithmetic: ADD, SUB, ADC, SBC, INC, DEC with proper flag handling
-    - Logic: AND, OR, XOR, CP with zero and carry flag updates
-    - Load/Store: LD variants for registers, memory, and immediate values
-    - Control Flow: JP, JR, CALL, RET with conditional and unconditional variants
-    - Stack: PUSH, POP for register pairs and return addresses
-    - Bit Operations: BIT, SET, RES, SWAP, rotates, and shifts (prefixed CB instructions)
-    - System: NOP, HALT, STOP, DI, EI for system control and power management
-
-  Timing and Accuracy:
-    - Cycle-accurate execution with proper M-cycle counting
-    - Accurate flag behavior for arithmetic and logic operations
-    - Proper interrupt timing and master enable/disable handling
-    - Authentic register initialization matching real Game Boy boot sequence
-    - Correct stack pointer and program counter initialization
-
-  Debug Features:
-    - Comprehensive instruction logging with register dumps
-    - Cycle count tracking for performance analysis
-    - Memory access logging for debugging
-    - Interrupt state monitoring
-    - CPU state snapshots to files for external analysis
-
-  Integration:
-    - Communicates with all system components through the bus interface
-    - Coordinates with interrupt controller for hardware interrupt handling
-    - Synchronized with PPU for display timing and V-blank interrupts
-    - Works with timer for accurate timing interrupt generation
-    - Supports DMA operations for high-speed memory transfers
-*/
+// Central Processing Unit implementation for Game Boy emulation.
+//
+// The CPU module implements the Sharp LR35902 processor used in the Game Boy.
+// Features a complete instruction set with accurate timing, interrupt handling,
+// and debug capabilities for development and testing.
+//
+// CPU Struct Members:
+//   registers: CPU Registers - A, B, C, D, E, H, L registers and flags (F) register
+//   pc: Program Counter - Current instruction address in memory space
+//   sp: Stack Pointer - Current position in the call stack
+//   bus: System Bus - Interface to memory, I/O, and other hardware components
+//   curr_opcode: Current Opcode - The instruction byte currently being executed
+//   curr_instruction: Current Instruction - Decoded instruction enum for execution
+//   is_halted: Halt State - CPU halted until interrupt occurs (HALT instruction)
+//   log_ticks: Debug Logging - Enables detailed execution logging with cycle counts
+//   debug: Debug Mode - Global debug flag for development features
+//
+// CPU Implementation Methods:
+//   new: Constructor - Initializes CPU with authentic Game Boy register values and debug settings
+//   step: Execution Cycle - Performs one complete instruction fetch-decode-execute cycle
+//   fetch: Instruction Fetch - Reads the next opcode from memory at PC address
+//   decode: Instruction Decode - Converts opcode to executable instruction enum
+//   execute: Instruction Execute - Matches instruction enum to implementation function
+//   cpu_request_interrupt: Interrupt Request - Requests hardware interrupt from external components
+//
+// Instruction Categories:
+//   - Arithmetic: ADD, SUB, ADC, SBC, INC, DEC with proper flag handling
+//   - Logic: AND, OR, XOR, CP with zero and carry flag updates
+//   - Load/Store: LD variants for registers, memory, and immediate values
+//   - Control Flow: JP, JR, CALL, RET with conditional and unconditional variants
+//   - Stack: PUSH, POP for register pairs and return addresses
+//   - Bit Operations: BIT, SET, RES, SWAP, rotates, and shifts (prefixed CB instructions)
+//   - System: NOP, HALT, STOP, DI, EI for system control and power management
+//
+// Timing and Accuracy:
+//   - Cycle-accurate execution with proper M-cycle counting
+//   - Accurate flag behavior for arithmetic and logic operations
+//   - Proper interrupt timing and master enable/disable handling
+//   - Authentic register initialization matching real Game Boy boot sequence
+//   - Correct stack pointer and program counter initialization
+//
+// Debug Features:
+//   - Comprehensive instruction logging with register dumps
+//   - Cycle count tracking for performance analysis
+//   - Memory access logging for debugging
+//   - Interrupt state monitoring
+//   - CPU state snapshots to files for external analysis
+//
+// Integration:
+//   - Communicates with all system components through the bus interface
+//   - Coordinates with interrupt controller for hardware interrupt handling
+//   - Synchronized with PPU for display timing and V-blank interrupts
+//   - Works with timer for accurate timing interrupt generation
+//   - Supports DMA operations for high-speed memory transfers
 
 use crate::hdw::bus::BUS;
 use crate::hdw::cpu_ops::*;
@@ -70,7 +68,22 @@ use super::cpu_util::{log_cpu_state, print_step_info};
 use super::debug;
 use super::emu::emu_cycles;
 
-// Our CPU to Call and Control
+/// Game Boy Sharp LR35902 CPU implementation.
+///
+/// Implements the complete instruction set with cycle-accurate timing,
+/// interrupt handling, and debug capabilities.
+///
+/// # Fields
+///
+/// * `registers` - CPU registers (A, B, C, D, E, H, L, F)
+/// * `pc` - Program counter (current instruction address)
+/// * `sp` - Stack pointer (current stack position)
+/// * `bus` - System bus for memory and I/O access
+/// * `curr_opcode` - Currently executing opcode byte
+/// * `curr_instruction` - Decoded instruction enum
+/// * `is_halted` - CPU halt state (HALT instruction)
+/// * `log_ticks` - Enable cycle count logging
+/// * `debug` - Global debug mode flag
 pub struct CPU {
     pub registers: Registers,
     pub pc: u16,
@@ -86,7 +99,19 @@ pub struct CPU {
     pub debug: bool,
 }
 impl CPU {
-    // Contructor
+    /// Creates a new CPU with authentic Game Boy initialization values.
+    ///
+    /// Initializes registers to match the state after the Game Boy boot ROM completes.
+    /// Sets PC to 0x0100 (cartridge entry point) and SP to 0xFFFE (top of stack).
+    ///
+    /// # Arguments
+    ///
+    /// * `new_bus` - System bus for memory and I/O access
+    /// * `debug` - Enable debug logging and state tracking
+    ///
+    /// # Returns
+    ///
+    /// A new CPU instance with authentic Game Boy register values
     pub fn new(new_bus: BUS, debug: bool) -> Self {
         CPU {
             registers: Registers {
@@ -118,7 +143,19 @@ impl CPU {
         }
     }
 
-    // Function to 'step' through instructions
+    /// Executes one complete CPU instruction cycle.
+    ///
+    /// Performs fetch-decode-execute cycle for one instruction. Handles HALT state,
+    /// interrupt checking, and debug logging. Returns after instruction completion
+    /// and interrupt processing.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Shared emulation context for timing and debug state
+    ///
+    /// # Returns
+    ///
+    /// Always returns `true` (used for compatibility with emulation loop)
     pub fn step(&mut self, ctx: Arc<Mutex<EmuContext>>) -> bool {
         if !self.is_halted {
             self.fetch();
@@ -182,13 +219,23 @@ impl CPU {
         true
     }
 
-    // Function to fetch next opcode
+    /// Fetches the next instruction opcode from memory.
+    ///
+    /// Reads one byte from memory at the current PC address and increments
+    /// the cycle counter. Does not increment PC (done during execute).
     fn fetch(&mut self) {
         self.curr_opcode = self.bus.read_byte(None, self.pc);
         emu_cycles(self, 1);
     }
 
-    // Function to decode current opcode
+    /// Decodes the current opcode into an Instruction enum.
+    ///
+    /// Converts the fetched opcode byte into an executable instruction variant.
+    /// Handles both standard and CB-prefixed instructions.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the opcode cannot be decoded (invalid instruction)
     fn decode(&mut self) {
         // Try to decode curr opcode
         self.curr_instruction = Instruction::decode_from_opcode(self.curr_opcode, self.pc, self);
@@ -202,7 +249,15 @@ impl CPU {
         }
     }
 
-    // Function to execute an opcode by matching Instruction type and target then calling its method
+    /// Executes a decoded instruction.
+    ///
+    /// Matches the instruction enum variant and calls the appropriate operation
+    /// function. Updates PC, registers, and flags as needed. Handles all instruction
+    /// categories including arithmetic, logic, loads, jumps, and bit operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `instruction` - The decoded instruction to execute
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::NOP => {
@@ -401,6 +456,14 @@ impl CPU {
         }
     }
 
+    /// Requests a hardware interrupt.
+    ///
+    /// Sets the interrupt flag for the specified interrupt type. The interrupt
+    /// will be serviced on the next instruction cycle if IME is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `interrupt` - The interrupt type to request (VBlank, LCD, Timer, Serial, Joypad)
     pub fn cpu_request_interrupt(&mut self, interrupt: Interrupts) {
         self.bus.interrupt_controller.request_interrupt(interrupt);
     }

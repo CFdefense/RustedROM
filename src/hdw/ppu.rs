@@ -1,87 +1,138 @@
+// hdw/ppu.rs
+// Game Boy Picture Processing Unit
+//
+// This module implements the Game Boy's Picture Processing Unit (PPU), which is responsible
+// for generating the video output displayed on the LCD screen. The PPU operates in parallel
+// with the CPU and manages graphics rendering, sprite display, and LCD timing.
+//
+// # Core Components
+//
+// - Video RAM (VRAM): 8KB for tile data and tile maps
+// - Object Attribute Memory (OAM): 160 bytes for sprite attributes
+// - LCD Controller: Manages display timing and rendering modes
+// - Pixel Pipeline: Fetches and processes background/window/sprite pixels
+// - DMA Controller: Transfers sprite data during specific timing windows
+//
+// # Rendering Pipeline
+//
+// 1. OAM Scan: Search for sprites visible on current scanline
+// 2. Pixel Transfer: Fetch background, window, and sprite data
+// 3. HBlank: Horizontal blanking period between scanlines
+// 4. VBlank: Vertical blanking period after frame completion
+//
+// # LCD Modes and Timing
+//
+// - Mode 0 (HBlank): 204 cycles - CPU can access VRAM/OAM
+// - Mode 1 (VBlank): 4560 cycles - CPU can access VRAM/OAM
+// - Mode 2 (OAM): 80 cycles - CPU cannot access OAM
+// - Mode 3 (Transfer): 172 cycles - CPU cannot access VRAM/OAM
+//
+// # Graphics Features
+//
+// - 160x144 pixel display with 4-color grayscale palette
+// - 40 hardware sprites (8x8 or 8x16 pixels) with priority system
+// - Background and window layers with scrolling support
+// - Hardware-accelerated pixel FIFO for authentic timing
+//
+// The PPU achieves cycle-accurate timing to ensure proper game compatibility
+// and authentic visual behavior matching original Game Boy hardware.
+
 use crate::hdw::interrupts::Interrupts;
-/**
- * PPU Module - Game Boy Picture Processing Unit
- *
- * This module implements the Game Boy's Picture Processing Unit (PPU), which is responsible
- * for generating the video output displayed on the LCD screen. The PPU operates in parallel
- * with the CPU and manages graphics rendering, sprite display, and LCD timing.
- *
- * Core Components:
- * - Video RAM (VRAM): 8KB for tile data and tile maps
- * - Object Attribute Memory (OAM): 160 bytes for sprite attributes  
- * - LCD Controller: Manages display timing and rendering modes
- * - Pixel Pipeline: Fetches and processes background/window/sprite pixels
- * - DMA Controller: Transfers sprite data during specific timing windows
- *
- * Rendering Pipeline:
- * 1. OAM Scan: Search for sprites visible on current scanline
- * 2. Pixel Transfer: Fetch background, window, and sprite data
- * 3. HBlank: Horizontal blanking period between scanlines
- * 4. VBlank: Vertical blanking period after frame completion
- *
- * LCD Modes and Timing:
- * - Mode 0 (HBlank): 204 cycles - CPU can access VRAM/OAM
- * - Mode 1 (VBlank): 4560 cycles - CPU can access VRAM/OAM  
- * - Mode 2 (OAM): 80 cycles - CPU cannot access OAM
- * - Mode 3 (Transfer): 172 cycles - CPU cannot access VRAM/OAM
- *
- * Graphics Features:
- * - 160x144 pixel display with 4-color grayscale palette
- * - 40 hardware sprites (8x8 or 8x16 pixels) with priority system
- * - Background and window layers with scrolling support
- * - Hardware-accelerated pixel FIFO for authentic timing
- *
- * The PPU achieves cycle-accurate timing to ensure proper game compatibility
- * and authentic visual behavior matching original Game Boy hardware.
- */
 use crate::hdw::lcd::{LcdMode, StatSrc, LCD};
 use crate::hdw::ppu_pipeline::{FIFOState, PixelFIFO};
 use crate::hdw::ui::{delay, get_ticks};
 
-/**
- * OAMEntry - Object Attribute Memory Entry
- *
- * Represents a single sprite's attributes stored in OAM.
- * Each sprite uses 4 bytes in OAM memory (40 sprites total).
- */
+/// Object Attribute Memory entry representing a single sprite.
+///
+/// Each sprite uses 4 bytes in OAM memory (40 sprites total, 160 bytes).
+/// Sprites are positioned with offsets: Y offset by 16, X offset by 8.
+///
+/// # Attribute Flags (byte 3)
+///
+/// - Bit 7: BG and Window over OBJ (0=OBJ above, 1=OBJ behind colors 1-3)
+/// - Bit 6: Y flip (0=normal, 1=vertically mirrored)
+/// - Bit 5: X flip (0=normal, 1=horizontally mirrored)
+/// - Bit 4: Palette number (0=OBP0, 1=OBP1)
+/// - Bits 3-0: Not used in DMG
 #[derive(Copy, Clone)]
 pub struct OAMEntry {
-    /// Y position on screen (offset by 16 pixels)
+    /// Y position on screen (offset by 16 pixels).
+    ///
+    /// Y=0 means sprite is off-screen above. Y=16 means sprite top is at screen top.
     pub y: u8,
-    /// X position on screen (offset by 8 pixels)  
+
+    /// X position on screen (offset by 8 pixels).
+    ///
+    /// X=0 means sprite is off-screen left. X=8 means sprite left edge is at screen left.
     pub x: u8,
-    /// Tile number in VRAM tile data area
+
+    /// Tile number in VRAM tile data area.
+    ///
+    /// For 8x16 sprites, bit 0 is ignored (uses even tile for top, odd for bottom).
     pub tile: u8,
-    /// Attribute flags (palette, priority, flip bits)
+
+    /// Attribute flags (palette, priority, flip bits).
+    ///
+    /// Controls sprite rendering behavior including palette selection and flipping.
     pub flags: u8,
 }
 
-// Display timing constants matching Game Boy hardware specifications
-const LINES_PER_FRAME: u8 = 154; // Total scanlines including VBlank
-const TICKS_PER_LINE: u32 = 456; // CPU cycles per scanline
-const YRES: u8 = 144; // Visible scanlines
-const XRES: u8 = 160; // Pixels per scanline
+/// Display timing constants matching Game Boy hardware specifications.
 
-/**
- * OAMLineEntry - Linked List Node for Sprite Processing
- *
- * Used to build sorted lists of sprites visible on current scanline.
- * Sprites are sorted by X position for proper priority handling.
- */
+/// Total scanlines per frame including VBlank period.
+const LINES_PER_FRAME: u8 = 154;
+
+/// CPU cycles per scanline (456 T-cycles).
+const TICKS_PER_LINE: u32 = 456;
+
+/// Visible scanlines (0-143).
+const YRES: u8 = 144;
+
+/// Pixels per scanline.
+const XRES: u8 = 160;
+
+/// Linked list node for sprite processing on current scanline.
+///
+/// Used to build sorted lists of sprites visible on the current scanline.
+/// Sprites are sorted by X position for proper priority handling according
+/// to Game Boy sprite priority rules.
+///
+/// # Priority Rules
+///
+/// When multiple sprites overlap:
+/// 1. Sprite with smaller X coordinate has priority
+/// 2. If X coordinates are equal, sprite with lower OAM index has priority
 pub struct OAMLineEntry {
-    /// Sprite attributes for this entry
+    /// Sprite attributes for this entry.
     pub entry: OAMEntry,
-    /// Pointer to next sprite in sorted list
+
+    /// Pointer to next sprite in sorted list.
+    ///
+    /// None indicates end of list.
     pub next: Option<Box<OAMLineEntry>>,
 }
 
 impl OAMLineEntry {
+    /// Creates a new OAMLineEntry with the given sprite entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry` - The OAM entry to wrap in this list node
+    ///
+    /// # Returns
+    ///
+    /// A new OAMLineEntry with next set to None
     pub fn new(entry: OAMEntry) -> Self {
         OAMLineEntry { entry, next: None }
     }
 }
 
 impl OAMEntry {
+    /// Creates a new OAMEntry with all fields set to zero.
+    ///
+    /// # Returns
+    ///
+    /// A new OAMEntry with default values (sprite off-screen)
     pub fn new() -> Self {
         OAMEntry {
             y: 0,
@@ -91,10 +142,24 @@ impl OAMEntry {
         }
     }
 
+    /// Converts the OAM entry to a 4-byte array.
+    ///
+    /// # Returns
+    ///
+    /// Array of [Y, X, Tile, Flags]
     pub fn to_bytes(&self) -> [u8; 4] {
         [self.y, self.x, self.tile, self.flags]
     }
 
+    /// Creates an OAM entry from a 4-byte array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Array of [Y, X, Tile, Flags]
+    ///
+    /// # Returns
+    ///
+    /// A new OAMEntry with values from the byte array
     pub fn from_bytes(bytes: [u8; 4]) -> Self {
         OAMEntry {
             y: bytes[0],
@@ -105,48 +170,100 @@ impl OAMEntry {
     }
 }
 
-/**
- * PPU - Picture Processing Unit Controller
- *
- * Main PPU controller that manages all graphics rendering operations.
- * Coordinates between LCD timing, pixel pipeline, sprite processing,
- * and frame generation to produce authentic Game Boy video output.
- *
- * The PPU operates in four distinct modes during each frame:
- * - OAM Scan: Find sprites for current scanline
- * - Pixel Transfer: Render pixels using background, window, and sprites  
- * - HBlank: Horizontal blanking between scanlines
- * - VBlank: Vertical blanking between frames
- */
+/// Picture Processing Unit controller managing all graphics rendering.
+///
+/// Main PPU controller that manages all graphics rendering operations.
+/// Coordinates between LCD timing, pixel pipeline, sprite processing,
+/// and frame generation to produce authentic Game Boy video output.
+///
+/// # PPU Modes
+///
+/// The PPU operates in four distinct modes during each frame:
+/// - Mode 2 (OAM Scan): Find sprites for current scanline (80 cycles)
+/// - Mode 3 (Pixel Transfer): Render pixels using background, window, and sprites (172 cycles)
+/// - Mode 0 (HBlank): Horizontal blanking between scanlines (204 cycles)
+/// - Mode 1 (VBlank): Vertical blanking between frames (4560 cycles, 10 scanlines)
+///
+/// # Memory Layout
+///
+/// - VRAM: 8KB (0x8000-0x9FFF) for tile data and tile maps
+/// - OAM: 160 bytes (0xFE00-0xFE9F) for 40 sprite entries
+/// - Video Buffer: 160x144 pixels (23,040 32-bit ARGB values)
+///
+/// # Frame Timing
+///
+/// - Target: 60 FPS (16.67ms per frame)
+/// - Total cycles per frame: 70,224 (154 scanlines × 456 cycles)
+/// - Visible scanlines: 144 (0-143)
+/// - VBlank scanlines: 10 (144-153)
 pub struct PPU {
+    /// Object Attribute Memory - 40 sprite entries.
     pub oam_ram: [OAMEntry; 40],
+
+    /// Video RAM - 8KB for tile data and tile maps.
     pub vram: [u8; 0x2000],
-    pub ly: u8,                 // Current scanline
-    pub current_frame: u32,     // Current frame number
-    pub video_buffer: Vec<u32>, // Video buffer for frame (YRES * XRES * 32-bit pixels)
-    pub line_ticks: u32,        // Ticks for current scanline
-    pub lcd: LCD,               // LCD controller
+
+    /// Current scanline being rendered (0-153).
+    pub ly: u8,
+
+    /// Current frame number for tracking.
+    pub current_frame: u32,
+
+    /// Video buffer for frame (160x144 32-bit ARGB pixels).
+    pub video_buffer: Vec<u32>,
+
+    /// Cycle counter for current scanline (0-455).
+    pub line_ticks: u32,
+
+    /// LCD controller managing display timing and modes.
+    pub lcd: LCD,
+
+    /// Pixel FIFO for background/window/sprite pixel processing.
     pub pixel_fifo: PixelFIFO,
 
-    // Sprite/fifo info
-    pub line_sprite_count: u8,                   // 0 - 10 sprites per line
-    pub line_sprites: Option<Box<OAMLineEntry>>, // linked list of current line sprites
+    /// Number of sprites on current scanline (0-10 max).
+    pub line_sprite_count: u8,
+
+    /// Linked list of sprites visible on current scanline.
+    pub line_sprites: Option<Box<OAMLineEntry>>,
+
+    /// Array storage for line sprite entries.
     pub line_entry_array: [OAMLineEntry; 10],
+
+    /// Number of sprite entries fetched for current tile.
     pub fetched_entry_count: u8,
+
+    /// Sprite entries fetched for current tile (max 3).
     pub fetched_entries: [OAMEntry; 3],
 
-    // Window info
+    /// Window internal line counter for window rendering.
     pub window_line: u8,
 
-    // Frame timing
+    /// Target frame time in milliseconds (16.67ms for 60 FPS).
     target_frame_time: u32,
+
+    /// Previous frame timestamp for frame pacing.
     prev_frame_time: u64,
+
+    /// Start time for FPS calculation.
     start_timer: u64,
+
+    /// Frame counter for FPS calculation.
     frame_count: u32,
+
+    /// Current frames per second.
     pub current_fps: u32,
 }
 
 impl PPU {
+    /// Creates a new PPU with default initialization.
+    ///
+    /// Initializes all PPU components including VRAM, OAM, LCD controller,
+    /// pixel FIFO, and frame timing. Sets initial LCD mode to OAM scan.
+    ///
+    /// # Returns
+    ///
+    /// A new PPU instance ready for rendering
     pub fn new() -> Self {
         let mut ppu = PPU {
             oam_ram: [OAMEntry::new(); 40],
@@ -182,6 +299,13 @@ impl PPU {
         ppu
     }
 
+    /// Processes the pixel pipeline for the current cycle.
+    ///
+    /// Updates map coordinates, tile coordinates, and processes pipeline
+    /// fetch and push operations. Handles window visibility and coordinate
+    /// calculations for both background and window layers.
+    ///
+    /// Pipeline processing occurs on even cycles only for accurate timing.
     pub fn pipeline_process(&mut self) {
         // Instead of using unsafe code, manually inline the pipeline operations
         self.pixel_fifo.map_y = self.lcd.ly.wrapping_add(self.lcd.scy);
@@ -211,6 +335,18 @@ impl PPU {
         self.pipeline_push_pixel();
     }
 
+    /// Fetches tile and pixel data for the pipeline.
+    ///
+    /// Implements the FIFO state machine for fetching background, window,
+    /// and sprite data. Progresses through states: TILE → DATA0 → DATA1 → IDLE → PUSH.
+    ///
+    /// # Pipeline States
+    ///
+    /// - TILE: Fetch tile index from tile map
+    /// - DATA0: Fetch first byte of tile data (low bit plane)
+    /// - DATA1: Fetch second byte of tile data (high bit plane)
+    /// - IDLE: Wait one cycle before pushing
+    /// - PUSH: Push pixels to FIFO
     fn pipeline_fetch(&mut self) {
         match self.pixel_fifo.state {
             FIFOState::TILE => {
@@ -275,6 +411,15 @@ impl PPU {
         }
     }
 
+    /// Reads a byte from VRAM.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - VRAM address (0x8000-0x9FFF)
+    ///
+    /// # Returns
+    ///
+    /// The byte at the specified VRAM address, or 0xFF if address is out of range
     fn read_vram(&self, address: u16) -> u8 {
         if address >= 0x8000 && address <= 0x9FFF {
             self.vram[(address - 0x8000) as usize]
@@ -283,6 +428,14 @@ impl PPU {
         }
     }
 
+    /// Increments the LY register and handles LYC coincidence.
+    ///
+    /// Updates the window line counter if window is visible and being rendered.
+    /// Checks for LY=LYC coincidence and triggers STAT interrupt if enabled.
+    ///
+    /// # Returns
+    ///
+    /// Vector of interrupts to request (LCDSTAT if LYC coincidence occurs)
     fn increment_ly(&mut self) -> Vec<Interrupts> {
         let mut interrupts = Vec::new();
 
@@ -310,6 +463,14 @@ impl PPU {
         interrupts
     }
 
+    /// Handles PPU Mode 2 (OAM Scan).
+    ///
+    /// Scans OAM for sprites visible on the current scanline. Transitions to
+    /// Transfer mode after 80 cycles. Loads sprite list on first tick.
+    ///
+    /// # Returns
+    ///
+    /// Empty vector (no interrupts generated in OAM mode)
     fn ppu_mode_oam(&mut self) -> Vec<Interrupts> {
         if self.line_ticks >= 80 {
             self.lcd.lcds_mode_set(LcdMode::Transfer);
@@ -332,6 +493,14 @@ impl PPU {
         Vec::new()
     }
 
+    /// Handles PPU Mode 3 (Pixel Transfer).
+    ///
+    /// Processes the pixel pipeline to render background, window, and sprite pixels.
+    /// Transitions to HBlank mode after rendering all 160 pixels.
+    ///
+    /// # Returns
+    ///
+    /// Vector of interrupts to request (LCDSTAT if HBlank interrupt enabled)
     fn ppu_mode_xfer(&mut self) -> Vec<Interrupts> {
         // Now we can enable pipeline processing since it doesn't need bus access
         self.pipeline_process();
@@ -348,6 +517,14 @@ impl PPU {
         interrupts
     }
 
+    /// Handles PPU Mode 1 (VBlank).
+    ///
+    /// Processes VBlank period (scanlines 144-153). Increments LY each scanline
+    /// and transitions back to OAM mode when frame completes.
+    ///
+    /// # Returns
+    ///
+    /// Vector of interrupts to request (LCDSTAT if LYC coincidence occurs)
     fn ppu_mode_vblank(&mut self) -> Vec<Interrupts> {
         let mut interrupts = Vec::new();
 
@@ -366,6 +543,20 @@ impl PPU {
         interrupts
     }
 
+    /// Handles PPU Mode 0 (HBlank).
+    ///
+    /// Processes horizontal blanking period between scanlines. Increments LY
+    /// after 456 cycles and transitions to either VBlank (after line 143) or
+    /// OAM mode (for next scanline). Handles frame timing, FPS calculation,
+    /// and battery saves.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart` - Mutable reference to cartridge for battery saves
+    ///
+    /// # Returns
+    ///
+    /// Vector of interrupts to request (VBLANK, LCDSTAT)
     fn ppu_mode_hblank(&mut self, cart: &mut crate::hdw::cart::Cartridge) -> Vec<Interrupts> {
         let mut interrupts = Vec::new();
 
@@ -414,6 +605,19 @@ impl PPU {
         interrupts
     }
 
+    /// Advances the PPU by one T-cycle.
+    ///
+    /// Increments the line tick counter and dispatches to the appropriate
+    /// mode handler based on current LCD mode. This is the main PPU entry
+    /// point called once per CPU T-cycle.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart` - Mutable reference to cartridge for battery saves during VBlank
+    ///
+    /// # Returns
+    ///
+    /// Vector of interrupts to request (VBLANK, LCDSTAT)
     pub fn ppu_tick(&mut self, cart: &mut crate::hdw::cart::Cartridge) -> Vec<Interrupts> {
         self.line_ticks += 1;
 
@@ -425,10 +629,20 @@ impl PPU {
         }
     }
 
+    /// Updates the LCD LY register from PPU LY value.
+    ///
+    /// Synchronizes the LCD controller's LY register with the PPU's internal
+    /// LY counter. Called after PPU processing to keep registers in sync.
     pub fn update_lcd_ly(&mut self) {
         self.lcd.ly = self.ly;
     }
 
+    /// Writes a byte to OAM memory.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - OAM address (0xFE00-0xFE9F or 0x0000-0x009F)
+    /// * `value` - Byte value to write
     pub fn ppu_oam_write(&mut self, mut address: u16, value: u8) {
         if address >= 0xFE00 {
             address -= 0xFE00;
@@ -440,6 +654,15 @@ impl PPU {
         self.oam_ram[entry_index] = OAMEntry::from_bytes(entry_bytes);
     }
 
+    /// Reads a byte from OAM memory.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - OAM address (0xFE00-0xFE9F or 0x0000-0x009F)
+    ///
+    /// # Returns
+    ///
+    /// The byte at the specified OAM address
     pub fn ppu_oam_read(&self, mut address: u16) -> u8 {
         if address >= 0xFE00 {
             address -= 0xFE00;
@@ -449,14 +672,41 @@ impl PPU {
         self.oam_ram[entry_index].to_bytes()[byte_index]
     }
 
+    /// Writes a byte to VRAM.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - VRAM address (0x8000-0x9FFF)
+    /// * `value` - Byte value to write
     pub fn ppu_vram_write(&mut self, address: u16, value: u8) {
         self.vram[(address - 0x8000) as usize] = value;
     }
 
+    /// Reads a byte from VRAM.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - VRAM address (0x8000-0x9FFF)
+    ///
+    /// # Returns
+    ///
+    /// The byte at the specified VRAM address
     pub fn ppu_vram_read(&self, address: u16) -> u8 {
         self.vram[(address - 0x8000) as usize]
     }
 
+    /// Loads sprites visible on the current scanline into sorted list.
+    ///
+    /// Scans all 40 OAM entries and builds a linked list of up to 10 sprites
+    /// that are visible on the current scanline. Sprites are sorted by X position
+    /// for proper priority handling.
+    ///
+    /// # Sprite Selection
+    ///
+    /// - Maximum 10 sprites per scanline
+    /// - Sprites with X=0 are skipped (off-screen)
+    /// - Y position checked against current scanline with 16-pixel offset
+    /// - Sorted by X position (lower X = higher priority)
     pub fn load_line_sprites(&mut self) {
         let cur_y = self.lcd.ly as i16;
         let sprite_height = self.lcd.lcdc_obj_height() as i16;
@@ -526,6 +776,15 @@ impl PPU {
         }
     }
 
+    /// Adds fetched pixels to the FIFO.
+    ///
+    /// Converts tile data to pixels and pushes them to the FIFO. Handles
+    /// background/window pixel generation and sprite overlay. Applies scroll
+    /// offset for proper pixel alignment.
+    ///
+    /// # Returns
+    ///
+    /// true if pixels were successfully added, false if FIFO is too full
     fn pipeline_add(&mut self) -> bool {
         if self.pixel_fifo.fifo_size() > 8 {
             return false;
@@ -566,6 +825,10 @@ impl PPU {
         true
     }
 
+    /// Pushes a pixel from the FIFO to the video buffer.
+    ///
+    /// Pops a pixel from the FIFO and writes it to the video buffer at the
+    /// current screen position. Handles scroll offset and bounds checking.
     fn pipeline_push_pixel(&mut self) {
         if self.pixel_fifo.fifo_size() > 0 {
             let pixel_data = self.pixel_fifo.pixel_fifo_pop().unwrap();
@@ -585,6 +848,11 @@ impl PPU {
         }
     }
 
+    /// Loads sprite tiles that overlap with the current fetch position.
+    ///
+    /// Scans the line sprite list and identifies up to 3 sprites that overlap
+    /// with the current 8-pixel fetch window. Stores these sprites for data
+    /// fetching in subsequent pipeline stages.
     fn pipeline_load_sprite_tile(&mut self) {
         let mut current_sprite = self.line_sprites.as_ref();
 
@@ -609,6 +877,14 @@ impl PPU {
         }
     }
 
+    /// Loads sprite pixel data for fetched sprites.
+    ///
+    /// Fetches one byte of sprite tile data for each sprite in the fetched
+    /// entries list. Handles Y-flip and 8x16 sprite mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - Byte offset (0 for low bit plane, 1 for high bit plane)
     fn pipeline_load_sprite_data(&mut self, offset: u8) {
         let cur_y = self.lcd.ly as i16;
         let sprite_height = self.lcd.lcdc_obj_height();
@@ -635,6 +911,21 @@ impl PPU {
         }
     }
 
+    /// Fetches sprite pixel color for the current FIFO position.
+    ///
+    /// Checks all fetched sprites to find the highest priority visible sprite
+    /// pixel at the current position. Handles sprite priority, transparency,
+    /// X-flip, and palette selection.
+    ///
+    /// # Arguments
+    ///
+    /// * `_bit` - Bit position (unused, kept for compatibility)
+    /// * `color` - Background/window color to potentially override
+    /// * `bg_color` - Background color index for priority checking
+    ///
+    /// # Returns
+    ///
+    /// Final pixel color (sprite color if visible, otherwise background color)
     fn fetch_sprite_pixels(&self, _bit: u8, color: u32, bg_color: u8) -> u32 {
         let mut result_color = color;
 
@@ -699,6 +990,12 @@ impl PPU {
         result_color
     }
 
+    /// Loads window tile data into the pipeline.
+    ///
+    /// Fetches the tile index from the window tile map based on window-relative
+    /// coordinates. Uses the window line counter for accurate window rendering.
+    ///
+    /// Only loads if window is visible and within bounds.
     pub fn pipeline_load_window_tile(&mut self) {
         if !self.window_visible() {
             return;
@@ -727,10 +1024,19 @@ impl PPU {
         }
     }
 
+    /// Checks if the window layer is visible.
+    ///
+    /// # Returns
+    ///
+    /// true if window is enabled and WY is within visible range
     pub fn window_visible(&self) -> bool {
         self.lcd.lcdc_win_enable() && self.lcd.wy < YRES
     }
 
+    /// Checks and updates window state.
+    ///
+    /// Resets the window line counter at the start of each frame (LY=0).
+    /// This ensures proper window rendering across frames.
     pub fn check_window_state(&mut self) {
         // Reset window line counter at the start of each frame
         if self.ly == 0 {
