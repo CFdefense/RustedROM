@@ -36,13 +36,12 @@
 //   7. Clean shutdown on exit request
 
 use std::env;
-use std::path::PathBuf;
 use std::time::Instant;
 mod hdw;
 mod menu;
 
-use hdw::ui::UI;
-use menu::{Menu, MenuState};
+use hdw::emu::Emulator;
+use menu::{MenuState};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -58,16 +57,8 @@ fn main() -> Result<(), String> {
         println!("Debug mode enabled");
     }
 
-    // Initialize menu system
-    let mut menu: Menu = Menu::new(
-        PathBuf::from("roms"),
-        hdw::ui::SCREEN_WIDTH,
-        hdw::ui::SCREEN_HEIGHT,
-        debug,
-    );
-
-    // Initialize UI for menu
-    let mut ui = UI::new(debug)?; // Pass debug flag to enable debug window for menu
+    // Initialize Emulator
+    let mut emu = Emulator::new(debug);
     let mut last_time = Instant::now();
 
     // Main application loop
@@ -77,23 +68,23 @@ fn main() -> Result<(), String> {
         last_time = current_time;
 
         // Update menu context
-        menu.update(delta_time);
+        emu.menu.update(delta_time);
 
         // match keybaord events to changes in menu
-        for event in ui.event_pump.poll_iter() {
+        for event in emu.ui.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'app_loop,
                 Event::KeyDown {
                     keycode: Some(keycode),
                     ..
                 } => match keycode {
-                    Keycode::Return => menu.select(),
-                    Keycode::Escape | Keycode::Backspace => menu.back(),
-                    Keycode::Up => menu.navigate_up(),
-                    Keycode::Down => menu.navigate_down(),
+                    Keycode::Return => emu.menu.select(),
+                    Keycode::Escape | Keycode::Backspace => emu.menu.back(),
+                    Keycode::Up => emu.menu.navigate_up(),
+                    Keycode::Down => emu.menu.navigate_down(),
                     Keycode::Left | Keycode::Right => {
-                        if matches!(menu.current_state, MenuState::ROMSelection(_)) {
-                            menu.navigate_horizontal();
+                        if matches!(emu.menu.current_state, MenuState::ROMSelection(_)) {
+                            emu.menu.navigate_horizontal();
                         }
                     }
                     _ => {}
@@ -103,35 +94,34 @@ fn main() -> Result<(), String> {
         }
 
         // based on final current state -> render menu or ROM
-        match &menu.current_state {
+        match &emu.menu.current_state {
             MenuState::ROMOpen(rom) => {
                 // Launch ROM if requested
                 println!("Launching ROM: {}", rom.path);
-                let palette_colors = menu.current_palette.get_colors();
-                match launch_emulator(&rom.path, &mut ui, menu.debug, Some(palette_colors)) {
+                match emu.run(rom.path.clone()) {
                     Ok(_) => {
                         println!("ROM session ended, returning to menu");
-                        menu.back()
+                        emu.menu.back()
                     }
                     Err(e) => {
                         println!("Failed to launch game: {}", e);
-                        menu.back();
+                        emu.menu.back();
                     }
                 }
             }
             _ => {
                 // If not in game -> render menu
-                menu.render(&mut ui.screen_surface);
+                emu.menu.render(&mut emu.ui.screen_surface);
 
                 // Create texture and render to main window
-                let main_texture = ui
+                let main_texture = emu.ui
                     .main_texture_creator
-                    .create_texture_from_surface(&ui.screen_surface)
+                    .create_texture_from_surface(&emu.ui.screen_surface)
                     .expect("Failed to create main texture");
 
-                ui.main_canvas.clear();
-                ui.main_canvas.copy(&main_texture, None, None).unwrap();
-                ui.main_canvas.present();
+                emu.ui.main_canvas.clear();
+                emu.ui.main_canvas.copy(&main_texture, None, None).unwrap();
+                emu.ui.main_canvas.present();
             }
         }
 
@@ -141,19 +131,4 @@ fn main() -> Result<(), String> {
 
     println!("Thanks for using RustedROM!");
     Ok(())
-}
-
-fn launch_emulator(
-    rom_path: &str,
-    ui: &mut UI,
-    debug: bool,
-    palette: Option<[u32; 4]>,
-) -> Result<(), String> {
-    println!("Starting Game Boy emulator for: {}", rom_path);
-
-    // Use the new function that accepts an existing UI context
-    match hdw::emu::emu_run_with_ui(rom_path, ui, None, debug, palette) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Emulator error: {}", e)),
-    }
 }
