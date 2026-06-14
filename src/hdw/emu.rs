@@ -72,8 +72,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-
-// Import your required modules
+ 
 use crate::hdw::bus::BUS;
 use crate::hdw::cart::Cartridge;
 use crate::hdw::cpu::CPU;
@@ -123,14 +122,23 @@ pub fn init_global_emu_context(ctx: Arc<Mutex<EmuContext>>) {
 }
 
 // CPU thread function
+// 
+// This is the function which will run in a dedicated thread for cpu execution
+//
+// Later -> Migrate away from Mutex CPU into channel based approach
+//
 fn cpu_run(cpu: Arc<Mutex<CPU>>, ctx: Arc<Mutex<EmuContext>>) {
+    // Aquire the ctx lock and check if running
     while ctx.lock().unwrap().running {
+
+        // if paused we simply sleep and continue
         if ctx.lock().unwrap().paused {
             thread::sleep(Duration::from_millis(10));
             continue;
         }
 
         // Execute a CPU step
+        // May not need to pass ctx here in the future as im only using it for debug
         let result = {
             let mut cpu_lock = cpu.lock().unwrap();
             cpu_lock.step(Arc::clone(&ctx)) // Pass a clone of the Arc to step
@@ -158,54 +166,6 @@ fn cpu_run(cpu: Arc<Mutex<CPU>>, ctx: Arc<Mutex<EmuContext>>) {
     }
 }
 
-// Main Emulator Startup Function
-#[allow(dead_code)]
-pub fn emu_run(args: Vec<String>) -> io::Result<()> {
-    // Parse command line arguments
-    let mut rom_path = None;
-    let mut debug_limit = None;
-    let mut debug = false;
-    let mut i = 1;
-
-    while i < args.len() {
-        match args[i].as_str() {
-            "--debug-limit" => {
-                if i + 1 < args.len() {
-                    debug_limit = Some(args[i + 1].parse().expect("Debug limit must be a number"));
-                    i += 2;
-                    continue;
-                }
-            }
-            "--debug" => {
-                debug = true;
-                i += 1;
-                continue;
-            }
-            path => {
-                rom_path = Some(path);
-                i += 1;
-            }
-        }
-    }
-
-    // Check if ROM path was provided
-    let rom_path = rom_path
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Missing ROM file argument"))?;
-
-    // Initialize UI
-    let ui_result = UI::new(debug);
-    if let Err(e) = &ui_result {
-        println!("Failed to initialize UI: {}", e);
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to initialize UI: {}", e),
-        ));
-    }
-    let mut ui = ui_result.unwrap();
-
-    emu_run_with_ui(rom_path, &mut ui, debug_limit, debug, None)
-}
-
 pub fn emu_run_with_ui(
     rom_path: &str,
     ui: &mut UI,
@@ -213,7 +173,7 @@ pub fn emu_run_with_ui(
     debug: bool,
     palette: Option<[u32; 4]>,
 ) -> io::Result<()> {
-    // Attempt to create Cartridge
+    // Attempt to load Cartridge
     let mut cart = Cartridge::new();
     if let Err(e) = cart.load_cart(rom_path) {
         println!("Failed to load ROM file: {}", e);
