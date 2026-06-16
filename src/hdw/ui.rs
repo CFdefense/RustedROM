@@ -977,7 +977,7 @@ impl UI {
     }
 
     pub fn process_events(&mut self, mut cpu_lock: MutexGuard<CPU>) -> bool {
-        let mut should_continue = true; 
+        let mut should_continue = true;
         for event in self.event_pump.poll_iter() {
             match event {
                 // Handle quit events (X button, Alt+F4, etc.)
@@ -1012,12 +1012,8 @@ impl UI {
                                 cpu_lock.bus.gamepad.state.select = true
                             }
                             sdl2::keyboard::Keycode::Up => cpu_lock.bus.gamepad.state.up = true,
-                            sdl2::keyboard::Keycode::Down => {
-                                cpu_lock.bus.gamepad.state.down = true
-                            }
-                            sdl2::keyboard::Keycode::Left => {
-                                cpu_lock.bus.gamepad.state.left = true
-                            }
+                            sdl2::keyboard::Keycode::Down => cpu_lock.bus.gamepad.state.down = true,
+                            sdl2::keyboard::Keycode::Left => cpu_lock.bus.gamepad.state.left = true,
                             sdl2::keyboard::Keycode::Right => {
                                 cpu_lock.bus.gamepad.state.right = true
                             }
@@ -1034,22 +1030,12 @@ impl UI {
                     match keycode {
                         sdl2::keyboard::Keycode::Z => cpu_lock.bus.gamepad.state.b = false,
                         sdl2::keyboard::Keycode::X => cpu_lock.bus.gamepad.state.a = false,
-                        sdl2::keyboard::Keycode::Return => {
-                            cpu_lock.bus.gamepad.state.start = false
-                        }
-                        sdl2::keyboard::Keycode::Tab => {
-                            cpu_lock.bus.gamepad.state.select = false
-                        }
+                        sdl2::keyboard::Keycode::Return => cpu_lock.bus.gamepad.state.start = false,
+                        sdl2::keyboard::Keycode::Tab => cpu_lock.bus.gamepad.state.select = false,
                         sdl2::keyboard::Keycode::Up => cpu_lock.bus.gamepad.state.up = false,
-                        sdl2::keyboard::Keycode::Down => {
-                            cpu_lock.bus.gamepad.state.down = false
-                        }
-                        sdl2::keyboard::Keycode::Left => {
-                            cpu_lock.bus.gamepad.state.left = false
-                        }
-                        sdl2::keyboard::Keycode::Right => {
-                            cpu_lock.bus.gamepad.state.right = false
-                        }
+                        sdl2::keyboard::Keycode::Down => cpu_lock.bus.gamepad.state.down = false,
+                        sdl2::keyboard::Keycode::Left => cpu_lock.bus.gamepad.state.left = false,
+                        sdl2::keyboard::Keycode::Right => cpu_lock.bus.gamepad.state.right = false,
                         _ => {}
                     }
                 }

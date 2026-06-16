@@ -41,7 +41,7 @@ mod hdw;
 mod menu;
 
 use hdw::emu::Emulator;
-use menu::{MenuState};
+use menu::MenuState;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -117,7 +117,8 @@ fn main() -> Result<(), String> {
                 emu.menu.render(&mut emu.ui.screen_surface);
 
                 // Create texture and render to main window
-                let main_texture = emu.ui
+                let main_texture = emu
+                    .ui
                     .main_texture_creator
                     .create_texture_from_surface(&emu.ui.screen_surface)
                     .expect("Failed to create main texture");

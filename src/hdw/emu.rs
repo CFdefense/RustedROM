@@ -68,11 +68,11 @@
     - Safe state preservation during errors
 */
 
-use std::{io,path::Path};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use std::path::PathBuf;
+use std::{io, path::Path};
 
 use crate::hdw::bus::BUS;
 use crate::hdw::cart::Cartridge;
@@ -124,10 +124,14 @@ impl Emulator {
     pub fn new(debug: bool) -> Self {
         Self {
             ui: UI::new(debug).unwrap(),
-            menu: Menu::new(PathBuf::from("roms"), ui::SCREEN_WIDTH, ui::SCREEN_WIDTH, debug),
+            menu: Menu::new(
+                PathBuf::from("roms"),
+                ui::SCREEN_WIDTH,
+                ui::SCREEN_WIDTH,
+                debug,
+            ),
             debug: debug,
             palette: None,
-
         }
     }
 
@@ -163,7 +167,11 @@ impl Emulator {
         // Apply palette if provided
         if let Some(palette_colors) = &self.palette {
             if let Ok(mut cpu_lock) = cpu.lock() {
-                cpu_lock.bus.ppu.lcd.update_default_colors(palette_colors.get_colors());
+                cpu_lock
+                    .bus
+                    .ppu
+                    .lcd
+                    .update_default_colors(palette_colors.get_colors());
             }
         }
 
@@ -265,9 +273,9 @@ impl Emulator {
         Ok(())
     }
 }
-    
+
 // CPU thread function
-// 
+//
 // This is the function which will run in a dedicated thread for cpu execution
 //
 // Later -> Migrate away from Mutex CPU into channel based approach
@@ -275,7 +283,6 @@ impl Emulator {
 fn cpu_run(cpu: Arc<Mutex<CPU>>, ctx: Arc<Mutex<EmuContext>>) {
     // Aquire the ctx lock and check if running
     while ctx.lock().unwrap().running {
-
         // if paused we simply sleep and continue
         if ctx.lock().unwrap().paused {
             thread::sleep(Duration::from_millis(10));
@@ -299,7 +306,6 @@ fn cpu_run(cpu: Arc<Mutex<CPU>>, ctx: Arc<Mutex<EmuContext>>) {
         {
             let mut ctx_lock = ctx.lock().unwrap();
             ctx_lock.instruction_count += 1;
-
         }
     }
 }
@@ -349,4 +355,3 @@ pub fn is_debug_enabled() -> bool {
     }
     false
 }
-
