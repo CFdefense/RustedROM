@@ -11,8 +11,7 @@
     die: Shutdown Flag - Signals complete emulation shutdown and cleanup
     ticks: Cycle Counter - Global T-cycle counter for accurate timing synchronization
     cpu: CPU Reference - Thread-safe reference to the CPU for cross-thread access
-    debug_limit: Debug Limit - Optional instruction count limit for debugging sessions
-    instruction_count: Instruction Counter - Tracks executed instructions for debug limits
+    instruction_count: Instruction Counter - Tracks executed instructions for debugging
     timer: System Timer - Hardware timer component for time-based interrupts
     debug: Debug Mode - Global debug flag propagated throughout the system
 
@@ -47,7 +46,6 @@
     - DMA transfers coordinated with CPU execution
 
   Debug Integration:
-    - Optional instruction count limits for development
     - Debug mode propagation to all system components
     - Performance monitoring through cycle counting
     - State inspection capabilities for debugging

@@ -3,6 +3,7 @@
 A cycle-accurate Game Boy emulator written in Rust that faithfully recreates the original 1989 Nintendo Game Boy hardware, supporting the complete library of Game Boy games with accurate timing, graphics, audio, and save functionality.
 
 ## Demo
+
 <div align="center">
     <img src="https://github.com/CFdefense/RustedROM/blob/master/docs/demo.gif" alt="Demo Video" width="750">
 </div>
@@ -68,11 +69,13 @@ The emulator supports the entire Game Boy library with features like battery-bac
 ## Tech Stack
 
 ### Core
+
 - Rust
 - SDL2 for graphics and audio
 - Python for debugging and test scripts
 
 ### Dependencies
+
 - sdl2 - Graphics, audio, and input handling
 - once_cell - Global state management
 - lazy_static - Static data initialization
@@ -88,6 +91,7 @@ The emulator supports the entire Game Boy library with features like battery-bac
 ### Installation
 
 1. Clone the repository
+
 ```bash
 git clone https://github.com/CFdefense/GameBoy.git
 cd GameBoy
@@ -96,30 +100,36 @@ cd GameBoy
 2. Install SDL2 development libraries
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install libsdl2-dev libsdl2-ttf-dev
 ```
 
 **macOS:**
+
 ```bash
 brew install sdl2 sdl2_ttf
 ```
 
 **Windows:**
+
 - Download SDL2 development libraries from [libsdl.org](https://www.libsdl.org/download-2.0.php)
 - Extract and follow SDL2 Rust setup instructions
 
 3. Build the project (**Please build and run in release to avoid mutex poisoning**)
+
 ```bash
 cargo build --release
 ```
 
 4. Run the emulator
+
 ```bash
 cargo run --release
 ```
 
 5. Load a ROM file
+
 - Place Game Boy ROM files (.gb) in the `roms/game_roms/` directory
 - If you would like them to be associated with an image:
   1. Run the Emulator in --debug mode and view console output on game hover
@@ -129,18 +139,15 @@ cargo run --release
 ### Usage Examples
 
 **Run with specific ROM:**
+
 ```bash
 cargo run --release path/to/your/game.gb
 ```
 
 **Enable debug mode:**
+
 ```bash
 cargo run --release -- --debug path/to/your/game.gb
-```
-
-**Set instruction limit for debugging:**
-```bash
-cargo run --release -- --debug-limit 10000 path/to/your/game.gb
 ```
 
 ## Controls
@@ -156,7 +163,7 @@ cargo run --release -- --debug-limit 10000 path/to/your/game.gb
 
 - ROM Only
 - MBC1 (Memory Bank Controller 1)
-- MBC2 (Memory Bank Controller 2) 
+- MBC2 (Memory Bank Controller 2)
 - MBC3 (Memory Bank Controller 3) with Real-Time Clock
 - MBC5 (Memory Bank Controller 5) - Used in Pokemon Gold/Silver/Crystal
 - Battery-backed SRAM for all supported MBC types
@@ -167,13 +174,12 @@ cargo run --release -- --debug-limit 10000 path/to/your/game.gb
 GameBoy/
 ├── src/
 │   ├── hdw/                  # Hardware Emulation Modules
-│   │   ├── cpu.rs            # CPU Implementation
-│   │   ├── ppu.rs            # Picture Processing Unit
 │   │   ├── apu.rs            # Audio Processing Unit
+│   │   ├── bus.rs            # Memory Bus Implementation
 │   │   ├── cart.rs           # Cartridge and MBC handling
+│   │   ├── cpu.rs            # CPU Implementation
 │   │   ├── cpu_ops.rs        # CPU Instructions
 │   │   ├── cpu_util.rs       # CPU Helper Functions
-│   │   ├── debug_timer.rs    # Timer Helper Functions
 │   │   ├── debug.rs          # Serial Port Function
 │   │   ├── dma.rs            # Direct Memory Access
 │   │   ├── emu.rs            # Main Emulator
@@ -182,26 +188,31 @@ GameBoy/
 │   │   ├── interrupts.rs     # CPU Interrupts
 │   │   ├── io.rs             # IO Bus Memory Mappings
 │   │   ├── lcd.rs            # Liquid Crystal Display
+│   │   ├── mod.rs            # Hardware Module Definitions
+│   │   ├── ppu.rs            # Picture Processing Unit
 │   │   ├── ppu_pipeline.rs   # Pipeline For Rendering
 │   │   ├── ram.rs            # RAM Implementation
 │   │   ├── registers.rs      # CPU Register Definitions
 │   │   ├── stack.rs          # CPU Stack Implementation
 │   │   ├── timer.rs          # EMU Timer
-│   │   └── ui.rs             # User interface
-│   ├── main.rs               # Entry point
+│   │   └── ui.rs             # User Interface
 │   ├── menu/                 # Emulator Menu Modules
-│   │   ├── game_scanner.rs   # System Game Scanner
-│   │   ├── menu_renderer.rs  # SDL2 Menu Renderer
-│   │   └── menu_state.rs     # Menu State Machine
-├── roms/                     # ROM File directory
+│   │   ├── color_palette.rs  # Color Palette Definitions
+│   │   ├── menu.rs           # Menu Implementation
+│   │   ├── mod.rs            # Menu Module Definitions
+│   │   └── rom_catalog.rs    # ROM Catalog Management
+│   └── main.rs               # Entry Point
+├── docs/                     # Documentation
+│   └── demo.gif              # Demo Animation
+├── roms/                     # ROM File Directory
 │   ├── broken_roms/          # Broken Game ROMS
 │   ├── game_roms/            # Working Game ROMS
 │   ├── test_roms/            # Test and Debug ROMS
-│   └── imgs/                 # Game ROM Game Covers
+│   └── imgs/                 # Game ROM Cover Images
 ├── test/                     # Test Scripts Directory
 │   └── trace_compare.py      # Script To Compare Tracefiles
-├── saves/                    # Save File directory
-└── logs/                     # Debug Log directory
+├── saves/                    # Save File Directory
+└── logs/                     # Debug Log Directory
 ```
 
 ## Development Features
