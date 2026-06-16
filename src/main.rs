@@ -96,6 +96,9 @@ fn main() -> Result<(), String> {
         // based on final current state -> render menu or ROM
         match &emu.menu.current_state {
             MenuState::ROMOpen(rom) => {
+                // Set the palette properly
+                emu.palette = Some(emu.menu.current_palette.clone());
+
                 // Launch ROM if requested
                 println!("Launching ROM: {}", rom.path);
                 match emu.run(rom.path.clone()) {
