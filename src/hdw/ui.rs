@@ -47,6 +47,7 @@ use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::WindowContext;
 use sdl2::EventPump;
 use sdl2::VideoSubsystem;
+use std::sync::MutexGuard;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Main emulator window width in pixels.
@@ -973,6 +974,102 @@ impl UI {
                 let _ = audio_queue.queue_audio(&audio_buffer);
             }
         }
+    }
+
+    pub fn process_events(&mut self, mut cpu_lock: MutexGuard<CPU>) -> bool {
+        let mut should_continue = true;
+        for event in self.event_pump.poll_iter() {
+            match event {
+                // Handle quit events (X button, Alt+F4, etc.)
+                sdl2::event::Event::Quit { .. } => {
+                    should_continue = false;
+                }
+                // Handle window close events
+                sdl2::event::Event::Window {
+                    win_event: sdl2::event::WindowEvent::Close,
+                    ..
+                } => {
+                    should_continue = false;
+                }
+                // Handle key down events
+                sdl2::event::Event::KeyDown {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    // Check for exit key first
+                    if keycode == sdl2::keyboard::Keycode::Escape {
+                        self.exit_requested = true;
+                        should_continue = false;
+                    } else {
+                        // Handle game input
+                        match keycode {
+                            sdl2::keyboard::Keycode::Z => cpu_lock.bus.gamepad.state.b = true,
+                            sdl2::keyboard::Keycode::X => cpu_lock.bus.gamepad.state.a = true,
+                            sdl2::keyboard::Keycode::Return => {
+                                cpu_lock.bus.gamepad.state.start = true
+                            }
+                            sdl2::keyboard::Keycode::Tab => {
+                                cpu_lock.bus.gamepad.state.select = true
+                            }
+                            sdl2::keyboard::Keycode::Up => cpu_lock.bus.gamepad.state.up = true,
+                            sdl2::keyboard::Keycode::Down => cpu_lock.bus.gamepad.state.down = true,
+                            sdl2::keyboard::Keycode::Left => cpu_lock.bus.gamepad.state.left = true,
+                            sdl2::keyboard::Keycode::Right => {
+                                cpu_lock.bus.gamepad.state.right = true
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // Handle key up events
+                sdl2::event::Event::KeyUp {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    // Handle game input
+                    match keycode {
+                        sdl2::keyboard::Keycode::Z => cpu_lock.bus.gamepad.state.b = false,
+                        sdl2::keyboard::Keycode::X => cpu_lock.bus.gamepad.state.a = false,
+                        sdl2::keyboard::Keycode::Return => cpu_lock.bus.gamepad.state.start = false,
+                        sdl2::keyboard::Keycode::Tab => cpu_lock.bus.gamepad.state.select = false,
+                        sdl2::keyboard::Keycode::Up => cpu_lock.bus.gamepad.state.up = false,
+                        sdl2::keyboard::Keycode::Down => cpu_lock.bus.gamepad.state.down = false,
+                        sdl2::keyboard::Keycode::Left => cpu_lock.bus.gamepad.state.left = false,
+                        sdl2::keyboard::Keycode::Right => cpu_lock.bus.gamepad.state.right = false,
+                        _ => {}
+                    }
+                }
+                // Handle mouse button clicks for EXIT button
+                sdl2::event::Event::MouseButtonDown {
+                    mouse_btn: sdl2::mouse::MouseButton::Left,
+                    x,
+                    y,
+                    ..
+                } => {
+                    // Check exit button click
+                    let exit_x = (SCREEN_WIDTH - 55) as i32;
+                    let exit_button_width = 45i32;
+                    let exit_button_height = 22i32;
+
+                    let clicked_exit = self.show_header
+                        && x >= exit_x
+                        && x < exit_x + exit_button_width
+                        && y >= 4
+                        && y < 4 + exit_button_height;
+
+                    if clicked_exit {
+                        self.exit_requested = true;
+                        should_continue = false;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Update audio while we have the CPU lock
+        self.update_audio(&mut cpu_lock);
+
+        should_continue
     }
 }
 
